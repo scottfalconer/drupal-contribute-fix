@@ -5,10 +5,33 @@
 ![License](https://img.shields.io/badge/license-GPL--2.0%2B-blue)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 
-An [Agent Skill](https://agentskills.io) for **any Drupal contrib/core bug fix** - checks drupal.org before you write code.
+**Turn local Drupal fixes into effortless, maintainer-friendly contributions.**
 
-> **Not just for "upstream contributions"** - use this for ALL local fixes to contrib modules.
-> A 30-second preflight search can save hours of duplicate work.
+AI scales code generation, but it shouldn't scale noise.
+
+We want to empower AI Agents to fix Drupal bugs, while protecting maintainers from
+a flood of duplicate or low-quality contributions. This tool bridges the gap,
+transforming the Agent from a "local hacker" into a **responsible open-source contributor**.
+
+### 🎯 Our Mission: High Signal, Zero Noise
+To ensure contributions are helpful rather than overwhelming, this skill enforces three strict rules:
+1. **Targeted:** Searches Drupal.org first. If a fix exists, we stop and recommend using it. No duplicate effort.
+2. **High-Quality:** Runs PHP lint by default; runs PHPCS if available; flags hack patterns.
+3. **Maintainer-First:** Never auto-posts. Generates clean artifacts for **you** to review.
+
+---
+
+## 📖 Table of Contents
+
+- [Why Use This?](#why-use-this)
+- [What This Will NOT Do](#what-this-will-not-do)
+- [How It Works](#how-it-works)
+- [What You Get](#what-you-get)
+- [Quick Start](#quick-start)
+- [Workflow Modes](#workflow-modes)
+- [Options](#options)
+- [Exit Codes (Gatekeeper Behavior)](#exit-codes-gatekeeper-behavior)
+- [For AI Agent Developers](#for-ai-agent-developers)
 
 ---
 
@@ -18,11 +41,11 @@ An [Agent Skill](https://agentskills.io) for **any Drupal contrib/core bug fix**
 
 | :x: Without this Skill | :white_check_mark: With `drupal-contribute-fix` |
 | :--- | :--- |
-| Agent hacks `vendor/` or `core/` directly | Agent searches Drupal.org first |
-| Fix is lost on `composer update` | Fix is preserved in `patches/` |
-| Duplicate work (ignores existing MRs) | Downloads existing MRs/patches for you to test |
-| Community never sees the fix | Generates strict, contribution-ready patches |
-| No validation | Runs PHPCS, checks for "hack" patterns |
+| **Duplicate Work:** Agent ignores existing MRs/patches. | **Upstream-aware:** Searches Drupal.org and surfaces existing fixes. |
+| **Tech Debt:** Fixes are buried in `vendor/` or `core/`. | **Standardized:** Generates patches in `patches/`. |
+| **Maintainer Burnout:** Spammy, low-quality issues. | **Maintainer-friendly:** Warns on risky patterns and keeps human review in the loop. |
+| **Lost Fixes:** Local patches vanish on `composer update`. | **Preserved Work:** Artifacts are saved for future rerolls. |
+| **No Validation:** Errors slip through. | **Quality Gates:** Runs PHP lint and PHPCS (if available). |
 
 ---
 
@@ -38,6 +61,10 @@ An [Agent Skill](https://agentskills.io) for **any Drupal contrib/core bug fix**
 | Bypass your review | Every artifact requires human approval before submission |
 | Spam maintainers | Stops when existing MR/patch found; encourages testing over duplicating |
 
+### The "No Noise" Guarantee
+This tool never auto-posts to Drupal.org or pushes code automatically. It only generates
+local artifacts for you to review and submit.
+
 **The `--force` flag should be rare.** Use it only when:
 - You've reviewed the existing MR/patch and confirmed your fix is meaningfully different
 - You're providing a reroll for a different version
@@ -52,16 +79,15 @@ When using `--force`, always explain in your issue comment why a new patch was n
 ```mermaid
 graph TD
     A[🔍 Local Fix Detected] --> B{Search Drupal.org}
-    B -- MR/Patch Exists --> C[🛑 STOP]
-    C --> D[Test Existing Fix]
-    B -- No Fix Found --> E{Check Dev Branch}
-    E -- Fixed in Dev --> F[🛑 STOP]
-    F --> G[Recommend Upgrade]
-    E -- Bug Exists in Dev --> H{Hack Detection}
-    H -- Clean Fix --> I[✅ PROCEED]
-    I --> J[Generate Patch]
-    H -- Hacky Fix --> K[⚠️ STOP]
-    K --> L[Analysis Only]
+    B -- MR/Patch Exists --> C[🛑 STOP & Use Existing Fix]
+    C --> D[Test/Reroll Existing Fix]
+    B -- No Fix Found --> E{Security Check}
+    E -- Security Risk --> F[🛑 STOP & Follow Security Process]
+    E -- OK --> G[✅ Generate Patch]
+    G --> H[Validate (php -l; PHPCS if available)]
+    G --> J[Warn on Hack Patterns (if any)]
+    H --> I[Artifacts: REPORT.md, ISSUE_COMMENT.md, patch]
+    J --> I
 ```
 
 ---
