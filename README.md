@@ -84,8 +84,8 @@ graph TD
     B -- No Fix Found --> E{Security Check}
     E -- Security Risk --> F[🛑 STOP & Follow Security Process]
     E -- OK --> G[✅ Generate Patch]
-    G --> H[Validate (php -l; PHPCS if available)]
-    G --> J[Warn on Hack Patterns (if any)]
+    G --> H[Validate php -l and PHPCS if available]
+    G --> J[Warn on Hack Patterns if any]
     H --> I[Artifacts: REPORT.md, ISSUE_COMMENT.md, patch]
     J --> I
 ```
