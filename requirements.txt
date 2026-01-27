@@ -1,0 +1,6 @@
+# drupal-contribute-fix requirements
+#
+# This project uses only Python standard library modules.
+# No external packages required.
+#
+# Python version: 3.8+
