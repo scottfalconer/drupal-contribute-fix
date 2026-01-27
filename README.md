@@ -13,7 +13,7 @@ We want to empower AI Agents to fix Drupal bugs, while protecting maintainers fr
 a flood of duplicate or low-quality contributions. This tool bridges the gap,
 transforming the Agent from a "local hacker" into a **responsible open-source contributor**.
 
-### 🎯 Our Mission: High Signal, Zero Noise
+### Our Mission: High Signal, Zero Noise
 To ensure contributions are helpful rather than overwhelming, this skill enforces three strict rules:
 1. **Targeted:** Searches Drupal.org first. If a fix exists, we stop and recommend using it. No duplicate effort.
 2. **High-Quality:** Runs PHP lint by default; runs PHPCS if available; flags hack patterns.
