@@ -79,16 +79,16 @@ When using `--force`, always explain in your issue comment why a new patch was n
 ```mermaid
 graph TD
     A[🔍 Local Fix Detected] --> B{Search Drupal.org}
-    B -- MR/Patch Exists --> C[🛑 STOP & Use Existing Fix]
-    C --> D[Test/Reroll Existing Fix]
-    B -- No Fix Found --> E{Security Check}
-    E -- Security Risk --> F[🛑 STOP & Follow Security Process]
-    E -- OK --> G[✅ Generate Patch]
-    G --> H[Validate php -l and PHPCS if available]
-    G --> J[Warn on Hack Patterns if any]
-    H --> I[Artifacts: REPORT.md, ISSUE_COMMENT.md, patch]
-    J --> I
+    B -- MR/Patch Exists --> C[🛑 STOP & DOWNLOAD]
+    C --> D[Test Existing Fix]
+    B -- No Fix Found --> E{Check Dev Branch}
+    E -- Fixed in Dev --> F[🛑 STOP & UPGRADE]
+    E -- Bug Exists in Dev --> H{Hack Detection}
+    H -- Clean Fix --> I[✅ GENERATE PATCH]
+    H -- Hacky Fix --> K[⚠️ WARN USER]
 ```
+
+*Note: Dev-branch checks are currently a manual step; the tool does not auto-verify them yet.*
 
 ---
 
