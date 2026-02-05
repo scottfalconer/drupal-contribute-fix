@@ -323,12 +323,17 @@ def is_security_related(
         if severity_order.get(i.severity, 0) >= threshold_level
     ]
 
-    # Consider it security-related if we have high severity
-    # or multiple medium severity indicators
+    # Consider it security-related if we have high severity indicators
+    # or multiple medium-severity *content* indicators.
+    #
+    # File-path heuristics ("access", "permission", etc.) are useful signals but
+    # are too noisy to use as a hard stop on their own.
     high_count = sum(1 for i in relevant if i.severity == "high")
-    medium_count = sum(1 for i in relevant if i.severity == "medium")
+    medium_non_path_count = sum(
+        1 for i in relevant if i.severity == "medium" and i.category != "security_file"
+    )
 
-    is_security = high_count > 0 or medium_count >= 2
+    is_security = high_count > 0 or medium_non_path_count >= 2
 
     return is_security, indicators
 
