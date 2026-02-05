@@ -33,6 +33,10 @@ python3 scripts/contribute_fix.py preflight \
 
 This takes 30 seconds and may save hours of duplicate work.
 
+If your agent/tool is running from another repo and can’t find `scripts/contribute_fix.py`, either:
+- Run it via an absolute path to this skill repo, or
+- Install the `dcf` shim once: `bash scripts/install_shims.sh` (then run `dcf preflight ...` from anywhere).
+
 **Important:** Drupal.org's `api-d7` endpoint does **not** support a full-text `text=` filter (it returns HTTP 412). If you need a manual keyword search link, use the Drupal.org UI search:
 
 ```text

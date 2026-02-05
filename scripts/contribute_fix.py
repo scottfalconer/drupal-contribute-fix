@@ -20,16 +20,19 @@ import re
 import sys
 import tempfile
 import shutil
+import subprocess
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 # Add lib to path
-SCRIPT_DIR = Path(__file__).parent.resolve()
-LIB_DIR = SCRIPT_DIR.parent / "lib"
+SCRIPT_DIR = Path(__file__).resolve().parent
+REPO_ROOT = SCRIPT_DIR.parent
+LIB_DIR = REPO_ROOT / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
 from drupalorg_api import DrupalOrgAPI, DrupalOrgAPIError, is_fixed_status, get_status_label, get_priority_label
 from drupalorg_urls import build_project_issue_search_url
+from issue_queue_integration import find_dorg_script
 from issue_matcher import (
     IssueMatcher,
     IssueCandidate,
@@ -320,11 +323,57 @@ def run_preflight(
         print(f"  Confidence: {confidence}")
         if best_match.has_mr:
             print(f"  Has MR(s): {', '.join(best_match.mr_urls)}")
-        print(
-            "\nOptional deep summary (drupal-issue-queue skill):\n"
-            f"  python scripts/dorg.py issue {best_match.nid} --format md\n"
-            "  (run from the drupal-issue-queue directory)"
-        )
+
+        dorg_path = find_dorg_script(REPO_ROOT)
+        if dorg_path:
+            print(
+                "\nOptional deep summary (drupal-issue-queue):\n"
+                f"  python3 {dorg_path} --format md issue {best_match.nid} --mode summary --comments 10 --files-limit 0 --resolve-tags none --related-mrs"
+            )
+            if not offline:
+                output_dir = Path(output_dir)
+                output_dir.mkdir(parents=True, exist_ok=True)
+                summary_path = output_dir / f"ISSUE_{best_match.nid}_SUMMARY.md"
+                try:
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(dorg_path),
+                            "--format",
+                            "md",
+                            "issue",
+                            str(best_match.nid),
+                            "--mode",
+                            "summary",
+                            "--comments",
+                            "10",
+                            "--files-limit",
+                            "0",
+                            "--resolve-tags",
+                            "none",
+                            "--related-mrs",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    if result.returncode == 0 and result.stdout.strip():
+                        summary_path.write_text(result.stdout, encoding="utf-8")
+                        print(f"Saved issue summary: {summary_path}")
+                    else:
+                        print(
+                            "Warning: drupal-issue-queue summary failed "
+                            f"(exit {result.returncode}): {result.stderr.strip()}",
+                            file=sys.stderr,
+                        )
+                except Exception as e:
+                    print(f"Warning: drupal-issue-queue summary error: {e}", file=sys.stderr)
+        else:
+            print(
+                "\nOptional deep summary (drupal-issue-queue skill):\n"
+                f"  python scripts/dorg.py issue {best_match.nid} --format md\n"
+                "  (run from the drupal-issue-queue directory)"
+            )
 
     return EXIT_PROCEED, candidates, best_match, confidence
 
