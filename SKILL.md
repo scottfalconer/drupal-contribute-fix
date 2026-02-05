@@ -187,6 +187,22 @@ The skill ends in exactly one of these outcomes:
 **Workflow modes:** When an existing fix is found (exit 10), the skill reports whether the
 issue is MR-based or patch-based to guide the contributor on how to proceed.
 
+## Workflow Hygiene (MR vs Patch)
+
+Drupal issues increasingly use **Merge Requests (MRs)**. Some issues are still **patch-based**.
+To reduce maintainer back-and-forth, this skill now **records which workflow you're in**.
+
+Outputs (in every issue directory):
+- `WORKFLOW.md` - at-a-glance workflow decision (MR-based vs patch-based) + links + guidance
+- `REPORT.md` - includes a **Workflow** section near the top
+- `ISSUE_COMMENT.md` - template is workflow-aware:
+  - MR-based: comment template points to the existing MR(s) (no patch upload)
+  - Patch-based: comment template assumes patch + interdiff workflow
+
+Rule of thumb:
+- **MR-based issues:** contribute via GitLab MR/issue fork branch; don't upload new patches to the Drupal.org issue unless maintainers request it.
+- **Patch-based issues:** stay in patch workflow (reroll/update patch + attach interdiff).
+
 ## Commands
 
 ### Preflight (search only)
