@@ -100,6 +100,80 @@ def format_outcome_description(outcome_code: int) -> str:
     return descriptions.get(outcome_code, f"Unknown outcome ({outcome_code})")
 
 
+def _workflow_mode_label(workflow_mode: str) -> str:
+    """Human-friendly label for the workflow mode."""
+    if workflow_mode == WORKFLOW_MODE_MR:
+        return "MR-based"
+    if workflow_mode == WORKFLOW_MODE_PATCH:
+        return "Patch-based"
+    return "None"
+
+
+def _generate_workflow_note(report: "ContributionReport", issue_url: Optional[str]) -> List[str]:
+    """
+    Generate a short workflow note explaining whether this is MR-based or patch-based.
+
+    This is included in REPORT.md and also written as WORKFLOW.md so future agents
+    can quickly determine the intended contribution workflow.
+    """
+    best = report.best_match
+    mode = best.workflow_mode if best else WORKFLOW_MODE_NONE
+    label = _workflow_mode_label(mode)
+
+    lines: List[str] = [
+        f"- **Workflow mode:** {label}",
+    ]
+    if issue_url:
+        lines.append(f"- **Issue:** {issue_url}")
+
+    if best and best.mr_urls:
+        lines.append("- **MRs:**")
+        for url in best.mr_urls:
+            lines.append(f"  - {url}")
+
+    if best and best.patch_urls:
+        lines.append(f"- **Existing patches:** {len(best.patch_urls)} attached")
+
+    lines.append("")
+    lines.append("**Guidance:**")
+    if mode == WORKFLOW_MODE_MR:
+        lines.extend([
+            "- Work in GitLab (update the existing MR/issue fork branch).",
+            "- Do NOT upload new patch files to the Drupal.org issue unless maintainers request it.",
+            "- You may still generate a local patch for review, but treat it as local-only.",
+        ])
+    elif mode == WORKFLOW_MODE_PATCH:
+        lines.extend([
+            "- Stay in patch workflow (reroll/update the existing patch + attach interdiff).",
+            "- Avoid creating a new MR unless maintainers request it.",
+        ])
+    else:
+        lines.extend([
+            "- No upstream artifacts detected; default to patch workflow (attach patch to the issue).",
+        ])
+
+    # If a patch was generated via --force on an MR-based issue, make that explicit.
+    if report.patch_info and mode == WORKFLOW_MODE_MR:
+        lines.extend([
+            "",
+            "**Note:** A patch was generated with `--force` even though this is an MR-based issue.",
+            "Treat the patch as a review artifact only (do not upload unless asked).",
+        ])
+
+    return lines
+
+
+def _generate_workflow_markdown(report: "ContributionReport", issue_url: Optional[str]) -> str:
+    """Generate WORKFLOW.md content."""
+    lines = [
+        "# Workflow",
+        "",
+    ]
+    lines.extend(_generate_workflow_note(report, issue_url))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int] = None) -> str:
     """Generate REPORT.md content."""
     lines = [
@@ -130,6 +204,22 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
         f"{report.outcome_reason}",
         "",
     ])
+
+    # Always record which workflow we should be using (MR-based vs patch-based).
+    issue_url = None
+    if issue_nid:
+        issue_url = f"https://www.drupal.org/node/{issue_nid}"
+    elif report.best_match:
+        issue_url = report.best_match.url
+
+    lines.extend([
+        "---",
+        "",
+        "## Workflow",
+        "",
+    ])
+    lines.extend(_generate_workflow_note(report, issue_url))
+    lines.append("")
 
     # Upstream search results
     lines.extend([
@@ -402,6 +492,48 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             ])
         lines.append("")
 
+    # Next steps for STOPPED workflows (MR-based / patch-based).
+    if not report.patch_info and report.outcome_code == 10 and report.best_match:
+        lines.extend([
+            "---",
+            "",
+            "## What To Do Next (Manual Steps Required)",
+            "",
+            "> **This skill does NOT post to drupal.org or GitLab on your behalf.**",
+            "> You must complete these steps yourself.",
+            "",
+        ])
+
+        if report.best_match.workflow_mode == WORKFLOW_MODE_MR and report.best_match.mr_urls:
+            mr_url = report.best_match.mr_urls[0]
+            lines.extend([
+                f"1. **Go to the issue:** {report.best_match.url}",
+                f"2. **Review the existing MR:** {mr_url}",
+                "3. **Test the MR locally** and add a Tested-by/RTBC comment",
+                "4. **If changes are needed:** push commits to the issue fork branch used by the MR",
+                "",
+                "Tip: You can download the MR as a patch for local testing:",
+                "```bash",
+                f"curl -L -o mr.patch {mr_url}.patch",
+                "git apply mr.patch",
+                "```",
+                "",
+            ])
+        elif report.best_match.workflow_mode == WORKFLOW_MODE_PATCH and report.best_match.patch_urls:
+            lines.extend([
+                f"1. **Go to the issue:** {report.best_match.url}",
+                "2. **Download the latest patch** and reroll/update it as needed",
+                "3. **Attach rerolled patch + interdiff** to the issue",
+                "4. **Post a comment** using `ISSUE_COMMENT.md` as a starting point",
+                "",
+            ])
+        else:
+            lines.extend([
+                "1. Review the issue and decide whether to proceed with a patch or create an MR.",
+                "2. Post a comment with your findings and next steps.",
+                "",
+            ])
+
     # Footer
     lines.extend([
         "---",
@@ -425,6 +557,61 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             keyword_desc = keyword_desc[:77] + "..."
     else:
         keyword_desc = "the reported issue"
+
+    # If we STOP due to an existing upstream artifact, generate a workflow-specific
+    # comment template rather than a generic "analysis-only" stub.
+    if report.outcome_code == 10 and report.best_match:
+        best = report.best_match
+        workflow_label = _workflow_mode_label(best.workflow_mode)
+
+        lines.extend([
+            "## Workflow Note",
+            "",
+            f"**Workflow:** {workflow_label}",
+            f"**Issue:** {best.url}",
+            "",
+        ])
+
+        if best.workflow_mode == WORKFLOW_MODE_MR and best.mr_urls:
+            lines.extend([
+                "This issue is **MR-based**. I focused on reviewing/testing the existing MR rather than uploading a new patch.",
+                "",
+                "**MR(s):**",
+            ])
+            for url in best.mr_urls:
+                lines.append(f"- {url}")
+            lines.extend([
+                "",
+                "**Testing performed:**",
+                "- [EDIT: add exact commands + results]",
+                "",
+                "**Notes:**",
+                "- [EDIT: what you observed; any feedback for the MR author/maintainer]",
+                "",
+                "**AI disclosure:**",
+                "- AI assistance used. Output reviewed by me and tests above were run by me.",
+                "",
+            ])
+            return "\n".join(lines)
+
+        if best.workflow_mode == WORKFLOW_MODE_PATCH and best.patch_urls:
+            lines.extend([
+                "This issue is **patch-based**. Recommended next step is to reroll/update the latest patch and attach an interdiff.",
+                "",
+                "**Existing patches:**",
+            ])
+            for url in best.patch_urls[:5]:
+                lines.append(f"- {url}")
+            lines.extend([
+                "",
+                "**Testing performed:**",
+                "- [EDIT: add exact commands + results]",
+                "",
+                "**AI disclosure:**",
+                "- AI assistance used. Output reviewed by me and tests above were run by me.",
+                "",
+            ])
+            return "\n".join(lines)
 
     # For new issues (no matching upstream issue), generate a full issue template
     if is_new_issue and report.patch_info:
@@ -776,6 +963,18 @@ def write_report(
     with open(comment_path, 'w') as f:
         f.write(comment_md)
     paths["comment"] = comment_path
+
+    # WORKFLOW.md - quick at-a-glance workflow note (MR vs patch).
+    issue_url = None
+    if issue_nid:
+        issue_url = f"https://www.drupal.org/node/{issue_nid}"
+    elif report.best_match:
+        issue_url = report.best_match.url
+    workflow_md = _generate_workflow_markdown(report, issue_url)
+    workflow_path = issue_dir / "WORKFLOW.md"
+    with open(workflow_path, 'w') as f:
+        f.write(workflow_md)
+    paths["workflow"] = workflow_path
 
     # Return the issue directory for patch generation
     paths["issue_dir"] = issue_dir
