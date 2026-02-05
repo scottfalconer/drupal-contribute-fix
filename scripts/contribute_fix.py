@@ -28,7 +28,7 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 LIB_DIR = SCRIPT_DIR.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
-from drupalorg_api import DrupalOrgAPI, DrupalOrgAPIError, is_fixed_status, get_status_label
+from drupalorg_api import DrupalOrgAPI, DrupalOrgAPIError, is_fixed_status, get_status_label, get_priority_label
 from issue_matcher import (
     IssueMatcher,
     IssueCandidate,
@@ -523,8 +523,20 @@ def run_package(
             else:
                 # Build an IssueCandidate from the issue data
                 # Find MRs from issue detail
-                related_mrs = issue_data.get("related_mrs", [])
-                mr_urls = [mr.get("url") for mr in related_mrs if mr.get("url")]
+                related_mrs = issue_data.get("related_mrs", []) or []
+                mr_urls = []
+                for mr in related_mrs:
+                    if isinstance(mr, str):
+                        if mr:
+                            mr_urls.append(mr)
+                        continue
+                    if isinstance(mr, dict):
+                        url = mr.get("url")
+                        if url:
+                            mr_urls.append(url)
+                # Deduplicate while preserving order.
+                seen = set()
+                mr_urls = [u for u in mr_urls if not (u in seen or seen.add(u))]
                 has_mr = bool(mr_urls)
 
                 # Find patches from node AND comments
@@ -532,12 +544,15 @@ def run_package(
                 has_patch = bool(patch_urls)
 
                 status_code = issue_data.get("field_issue_status")
+                priority_code = issue_data.get("field_issue_priority")
                 best_match = IssueCandidate(
                     nid=issue_number,
                     title=issue_data.get("title", f"Issue #{issue_number}"),
                     url=f"https://www.drupal.org/node/{issue_number}",
                     status=int(status_code) if status_code else 0,
                     status_label=get_status_label(status_code),
+                    priority=int(priority_code) if priority_code else 0,
+                    priority_label=get_priority_label(priority_code),
                     has_mr=has_mr,
                     has_patch=has_patch,
                     mr_urls=mr_urls,
@@ -614,6 +629,9 @@ def run_package(
             candidates=candidates,
             best_match=best_match,
             best_match_confidence=confidence,
+            # Even when we STOP, persist the test steps so the output artifact
+            # can be used directly for follow-up comments/reviews.
+            test_steps=test_steps if test_steps else None,
         )
         write_report(report, output_dir, issue_nid=stop_issue_nid, issue_dir_override=stop_issue_dir)
         print(f"\nArtifacts written to: {output_dir}/{stop_issue_dir}/")
