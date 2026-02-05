@@ -145,6 +145,20 @@ Tip: Drupal.org's `api-d7` endpoint does **not** support a full-text `text=` fil
 https://www.drupal.org/project/issues/search/<project>?text=<keywords>
 ```
 
+## Companion Tool: drupal-issue-queue (optional)
+
+For deeper triage (filters by status/priority/category/version/component/tag) and issue/thread summaries via `api-d7`, use the companion tool `drupal-issue-queue` (GitHub repo: `scottfalconer/drupal-issue-queue`).
+
+Common examples (run from the `drupal-issue-queue` directory):
+
+```bash
+# Summarize an issue (Markdown)
+python scripts/dorg.py issue <nid-or-url> --format md
+
+# Filter/search a project's issues
+python scripts/dorg.py search --project <machine_name> --status "needs review" --limit 20 --format json
+```
+
 **Search + generate patch:**
 ```bash
 python3 scripts/contribute_fix.py package \

@@ -39,6 +39,17 @@ This takes 30 seconds and may save hours of duplicate work.
 https://www.drupal.org/project/issues/search/<project>?text=<keywords>
 ```
 
+## Optional Companion Skill: drupal-issue-queue
+
+If the `drupal-issue-queue` skill is also available, use it for deeper triage and clean issue summaries (still read-only, still `api-d7`):
+
+- Summarize the best-match issue:
+  - `python scripts/dorg.py issue <nid-or-url> --format md`
+- Filter/search a project's issue queue (status/priority/category/version/component/tag):
+  - `python scripts/dorg.py search --project <machine_name> --status "needs review" --limit 20 --format json`
+
+(Run those commands from the `drupal-issue-queue` skill directory.)
+
 ## LAST STEP - After Making Any Local Fix
 
 **After you fix the bug locally, you MUST run `package` to generate contribution artifacts.**

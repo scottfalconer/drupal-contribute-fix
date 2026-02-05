@@ -320,6 +320,11 @@ def run_preflight(
         print(f"  Confidence: {confidence}")
         if best_match.has_mr:
             print(f"  Has MR(s): {', '.join(best_match.mr_urls)}")
+        print(
+            "\nOptional deep summary (drupal-issue-queue skill):\n"
+            f"  python scripts/dorg.py issue {best_match.nid} --format md\n"
+            "  (run from the drupal-issue-queue directory)"
+        )
 
     return EXIT_PROCEED, candidates, best_match, confidence
 
