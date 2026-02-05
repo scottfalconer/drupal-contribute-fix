@@ -54,6 +54,8 @@ If the `drupal-issue-queue` skill is also available, use it for deeper triage an
 
 (Run those commands from the `drupal-issue-queue` skill directory.)
 
+If the tool isn’t in a standard location, set `DRUPAL_ISSUE_QUEUE_DIR=/path/to/drupal-issue-queue`.
+
 ## LAST STEP - After Making Any Local Fix
 
 **After you fix the bug locally, you MUST run `package` to generate contribution artifacts.**

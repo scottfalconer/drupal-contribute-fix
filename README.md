@@ -171,6 +171,12 @@ python scripts/dorg.py issue <nid-or-url> --format md
 python scripts/dorg.py search --project <machine_name> --status "needs review" --limit 20 --format json
 ```
 
+If `drupal-contribute-fix` can’t auto-detect `drupal-issue-queue` on your machine, set:
+
+```bash
+export DRUPAL_ISSUE_QUEUE_DIR=/path/to/drupal-issue-queue
+```
+
 **Search + generate patch:**
 ```bash
 python3 scripts/contribute_fix.py package \
