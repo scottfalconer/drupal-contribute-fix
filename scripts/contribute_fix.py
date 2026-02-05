@@ -29,6 +29,7 @@ LIB_DIR = SCRIPT_DIR.parent / "lib"
 sys.path.insert(0, str(LIB_DIR))
 
 from drupalorg_api import DrupalOrgAPI, DrupalOrgAPIError, is_fixed_status, get_status_label, get_priority_label
+from drupalorg_urls import build_project_issue_search_url
 from issue_matcher import (
     IssueMatcher,
     IssueCandidate,
@@ -283,6 +284,8 @@ def run_preflight(
         Tuple of (exit_code, candidates, best_match, confidence)
     """
     print(f"Searching drupal.org issue queue for project: {project}")
+    print(f"Manual keyword search (Drupal.org UI): {build_project_issue_search_url(project, keywords)}")
+    print("Note: Drupal.org api-d7 does not support a `text=` filter (it returns HTTP 412).")
 
     api = DrupalOrgAPI(offline=offline)
 

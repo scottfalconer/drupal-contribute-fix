@@ -139,6 +139,12 @@ python3 scripts/contribute_fix.py preflight \
   --out .drupal-contribute-fix
 ```
 
+Tip: Drupal.org's `api-d7` endpoint does **not** support a full-text `text=` filter (it returns HTTP 412). For manual keyword searching, use the Drupal.org UI search:
+
+```text
+https://www.drupal.org/project/issues/search/<project>?text=<keywords>
+```
+
 **Search + generate patch:**
 ```bash
 python3 scripts/contribute_fix.py package \

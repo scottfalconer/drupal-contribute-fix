@@ -33,6 +33,12 @@ python3 scripts/contribute_fix.py preflight \
 
 This takes 30 seconds and may save hours of duplicate work.
 
+**Important:** Drupal.org's `api-d7` endpoint does **not** support a full-text `text=` filter (it returns HTTP 412). If you need a manual keyword search link, use the Drupal.org UI search:
+
+```text
+https://www.drupal.org/project/issues/search/<project>?text=<keywords>
+```
+
 ## LAST STEP - After Making Any Local Fix
 
 **After you fix the bug locally, you MUST run `package` to generate contribution artifacts.**
