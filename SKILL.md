@@ -19,23 +19,29 @@ metadata:
 
 Checks drupal.org before you write code, so you don't duplicate existing fixes.
 
+## Resolving Script Paths
+
+All script paths below are relative to this skill's root directory — NOT your current working directory. Before running any command, resolve the skill root once:
+
+```bash
+for d in "$HOME/.agents/skills/drupal-contribute-fix" "$HOME/.codex/skills/drupal-contribute-fix"; do [ -f "$d/SKILL.md" ] && DCF_ROOT="$d" && break; done
+```
+
+All commands below use `$DCF_ROOT`. You only need to run the line above once per session.
+
 ## FIRST STEP - Before Writing Any Code
 
 **If you are debugging an error in `docroot/modules/contrib/*` or `web/modules/contrib/*`,
 run `preflight` BEFORE editing any code - even if the user only asked for a local fix.**
 
 ```bash
-python3 scripts/contribute_fix.py preflight \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" preflight \
   --project <module-name> \
   --keywords "<error message>" \
   --out .drupal-contribute-fix
 ```
 
 This takes 30 seconds and may save hours of duplicate work.
-
-If your agent/tool is running from another repo and can’t find `scripts/contribute_fix.py`, either:
-- Run it via an absolute path to this skill repo, or
-- Install the `dcf` shim once: `bash scripts/install_shims.sh` (then run `dcf preflight ...` from anywhere).
 
 **Important:** Drupal.org's `api-d7` endpoint does **not** support a full-text `text=` filter (it returns HTTP 412). If you need a manual keyword search link, use the Drupal.org UI search:
 
@@ -61,7 +67,7 @@ If the tool isn’t in a standard location, set `DRUPAL_ISSUE_QUEUE_DIR=/path/to
 **After you fix the bug locally, you MUST run `package` to generate contribution artifacts.**
 
 ```bash
-python3 scripts/contribute_fix.py package \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --root /path/to/drupal/site \
   --changed-path docroot/modules/contrib/<module-name> \
   --keywords "<error message>" \
@@ -233,7 +239,7 @@ Rule of thumb:
 Search drupal.org for existing issues without generating a patch:
 
 ```bash
-python3 scripts/contribute_fix.py preflight \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" preflight \
   --project metatag \
   --keywords "TypeError MetatagManager::build" \
   --paths "src/MetatagManager.php" \
@@ -246,14 +252,14 @@ Search upstream AND generate contribution artifacts if appropriate:
 
 ```bash
 # For web/ docroot layout:
-python3 scripts/contribute_fix.py package \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --root /path/to/drupal/site \
   --changed-path web/modules/contrib/metatag \
   --keywords "TypeError MetatagManager::build" \
   --out .drupal-contribute-fix
 
 # For docroot/ layout (common in Acquia/BLT projects):
-python3 scripts/contribute_fix.py package \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --root /path/to/drupal/site \
   --changed-path docroot/modules/contrib/mcp \
   --keywords "module not installed" "update_get_available" \
@@ -268,7 +274,7 @@ if an existing fix is found (unless `--force` is provided).
 Generate a Tested-by/RTBC comment for an existing MR or patch you've tested:
 
 ```bash
-python3 scripts/contribute_fix.py test \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" test \
   --issue 3345678 \
   --tested-on "Drupal 10.2, PHP 8.2" \
   --result pass \
@@ -283,7 +289,7 @@ to specify which artifact you tested.
 Reroll an existing patch that doesn't apply to your version:
 
 ```bash
-python3 scripts/contribute_fix.py reroll \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" reroll \
   --issue 3345678 \
   --patch-url "https://www.drupal.org/files/issues/metatag-fix-3345678-15.patch" \
   --target-ref 2.0.x \
@@ -312,7 +318,7 @@ a rerolled patch if needed (or confirms it applies cleanly).
 **Agents MUST provide specific test steps via `--test-steps`.** Generic placeholders are not acceptable.
 
 ```bash
-python3 scripts/contribute_fix.py package \
+python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --changed-path docroot/modules/contrib/mcp \
   --keywords "update module not installed" \
   --test-steps \

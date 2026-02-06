@@ -129,18 +129,6 @@ git clone <repository-url>
 cd drupal-contribute-fix
 ```
 
-### Optional: install command shims (dcf/dorg)
-
-If you want a stable command that works from any directory (helpful for different agents/tools), install shims into `~/.local/bin`:
-
-```bash
-bash scripts/install_shims.sh
-```
-
-This installs:
-- `dcf` → `scripts/contribute_fix.py`
-- `dorg` → `drupal-issue-queue`’s `scripts/dorg.py` (only if found)
-
 ### Usage
 
 **Search only (preflight):**
