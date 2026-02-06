@@ -378,11 +378,198 @@ For unfiled issues (no existing drupal.org issue found):
 
 **DO NOT skip this step.** The user may not know about the contribution workflow.
 
+## Drupal.org GitLab Workflow
+
+**All Drupal core and contrib contributions use GitLab merge requests.** Patches are still accepted but merge requests are the preferred workflow.
+
+**Reference**: https://www.drupal.org/docs/develop/git/using-gitlab-to-contribute-to-drupal
+
+### Issue Forks
+
+An issue fork is a temporary repository copy for working on code changes. It begins as a duplicate of the main project repository but allows community members to commit and push modifications.
+
+**To create an issue fork:**
+1. Navigate to the issue on drupal.org
+2. Click the **"Create issue fork"** button below the issue summary
+3. Optionally create a new branch from the default branch
+
+**Branch naming convention:**
+- Format: `ISSUE_NUMBER-description-from-title`
+- Example: `3982435-ckeditor-5-compatibility`
+- Keep names concise and hyphenated
+- You can modify auto-generated names if they're truncated
+
+### Working with Issue Forks Locally
+
+**Prerequisites:**
+- Git configured with SSH or HTTPS authentication
+- Clone of the main repository
+
+**Step-by-step process:**
+
+```bash
+# 1. Ensure you have the latest code
+git pull
+
+# 2. Request push access by clicking "Get push access" on the issue page
+
+# 3. Add the fork remote (copy commands from "Show commands" on issue page)
+git remote add drupal-ISSUE_NUMBER git@git.drupal.org:issue/PROJECT-ISSUE_NUMBER.git
+
+# 4. Checkout the issue branch
+git fetch drupal-ISSUE_NUMBER
+git checkout -b ISSUE_NUMBER-description drupal-ISSUE_NUMBER/ISSUE_NUMBER-description
+
+# Or create a new branch
+git checkout -b ISSUE_NUMBER-my-description
+
+# 5. Verify your branch
+git branch --show-current
+
+# 6. Make your changes, then stage and commit
+git add -A
+git commit -m "Issue #ISSUE_NUMBER: Description of changes"
+
+# 7. Push to the fork
+git push drupal-ISSUE_NUMBER BRANCH_NAME
+```
+
+### Creating Merge Requests
+
+**After pushing your changes:**
+
+1. Navigate to the issue page and locate the Issue fork section
+2. Click **"Compare"** on your working branch
+3. Click **"Create new..."** and select **"New merge request"**
+
+**Fill out the merge request form:**
+
+| Field | Guidance |
+|-------|----------|
+| **Title** | Format: `Issue #ISSUE_NUMBER: brief_description` |
+| **Description** | Explain the problem, your solution, and any limitations |
+| **Mark as draft** | Check if work-in-progress |
+| **Delete source branch** | Check to keep repository clean |
+| **Squash commits** | Recommended for clean project history |
+| **Allow commits from members** | Keep checked to enable maintainer collaboration |
+
+**Important:** Additional commits to the same branch automatically appear in the existing merge request and trigger new test runs.
+
+### Rebasing Merge Requests
+
+Rebase when commits have been made to the base branch since your fork was created.
+
+**When rebasing is required:**
+- Merge request shows red links with merge error notices
+- Automated tests fail with "Not currently mergeable" messages
+- Conflicts exist between your changes and the base branch
+
+**GitLab UI method:**
+1. Click the merge request link from the issue fork area
+2. Click **"Rebase source branch"** link, or comment with `/rebase`
+
+**Command line method:**
+
+```bash
+# Fetch latest from origin
+git fetch origin
+
+# Update your local base branch
+git checkout BASE_BRANCH_NAME
+git pull
+
+# Rebase your feature branch
+git checkout ISSUE_BRANCH_NAME
+git rebase BASE_BRANCH_NAME
+
+# Resolve any conflicts if needed, then push
+git push --force-with-lease drupal-ISSUE_NUMBER
+```
+
+**Rebasing to a new base branch** (e.g., when 10.4.x becomes 11.0.x):
+
+```bash
+git fetch origin
+git switch NEW_BASE_BRANCH_NAME
+git pull
+git switch FEATURE_BRANCH
+git switch -c NEW_FEATURE_BRANCH
+git rebase --onto NEW_BASE_BRANCH_NAME OLD_BASE_BRANCH_NAME
+git push --force-with-lease drupal-ISSUE_NUMBER
+```
+
+### GitLab CI Automated Testing
+
+**GitLab CI runs automatically on all merge requests.** You cannot test patch files—contributions must be merge requests to be tested.
+
+**What runs automatically:**
+- Compatibility testing across Drupal Core versions
+- PHP and database configuration testing
+- PHPCS, PHPStan, and cspell linting
+- Project-specific PHPUnit tests
+
+**Interpreting results:**
+1. Navigate to Build → Pipelines in GitLab sidebar
+2. View pipeline status showing passed/failed jobs
+3. Click individual jobs to see full console output
+4. Test result summaries highlight failures
+
+**Triggering test re-runs:**
+- Comment `/rebase` to rebase and re-run
+- Use "Run Pipelines" button from project interface
+- Push additional commits to the branch
+
+**Important:** GitLab CI uses `phpunit.xml.dist`, `phpstan.neon.dist` and other `.dist` files. Review these files as they may cause unexpected test failures.
+
+### Drupal Core Contributions
+
+**Drupal core requires test coverage for all changes.** Contrib modules don't require tests (though they're encouraged).
+
+For core contributions, you MUST:
+1. Include test coverage for changes
+2. Ensure all existing tests pass
+3. Update tests if behavior changes
+
+See [references/core-testing.md](references/core-testing.md) for:
+- Choosing the right test type (Unit vs Kernel vs Functional)
+- Test file locations and class structure
+- Example test classes
+- Running tests locally (DDEV/Lando commands)
+- Test coverage checklist
+
+### Contribution Workflow Summary
+
+```
+1. Find/create issue on drupal.org
+2. Create issue fork (click button on issue page)
+3. Clone fork locally and create branch
+4. Make changes with test coverage (required for core)
+5. Push to fork
+6. Create merge request
+7. Respond to review feedback
+8. Rebase if needed when base branch updates
+9. Wait for RTBC and maintainer merge
+```
+
+### Key Git Commands Reference
+
+| Task | Command |
+|------|---------|
+| Verify current branch | `git branch --show-current` |
+| Check status | `git status` |
+| View changes | `git diff` |
+| Stage all changes | `git add -A` |
+| Commit changes | `git commit -m "Issue #NUMBER: message"` |
+| Push to fork | `git push drupal-ISSUE_NUMBER BRANCH_NAME` |
+| Force push after rebase | `git push --force-with-lease drupal-ISSUE_NUMBER` |
+| Rebase on base branch | `git rebase BASE_BRANCH_NAME` |
+
 ## References
 
 - [references/issue-status-codes.md](references/issue-status-codes.md) - Drupal.org issue status mapping
 - [references/patch-conventions.md](references/patch-conventions.md) - Patch naming and format
 - [references/hack-patterns.md](references/hack-patterns.md) - Patterns to avoid
+- [references/core-testing.md](references/core-testing.md) - Writing tests for Drupal core contributions
 
 ## Example Output
 
