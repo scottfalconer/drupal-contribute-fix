@@ -5,12 +5,12 @@ description: >
   stack traces. Trigger on: (1) "<module_name> module has an error/bug/issue",
   (2) "Acquia/Pantheon/Platform.sh" + module problem, (3) any contrib module name
   (metatag, webform, mcp, paragraphs, etc.) + problem description. Searches
-  drupal.org BEFORE you write any patch. NOT just for upstream contributions -
+  drupal.org BEFORE you write code changes. NOT just for upstream contributions -
   use for ALL local fixes to contrib/core.
 license: GPL-2.0-or-later
 metadata:
   author: Drupal Community
-  version: "1.4.0"
+  version: "1.7.0"
 ---
 
 # drupal-contribute-fix
@@ -18,6 +18,37 @@ metadata:
 **Use this skill for ANY Drupal contrib/core bug - even "local fixes".**
 
 Checks drupal.org before you write code, so you don't duplicate existing fixes.
+
+## Preferred Companion Skill: drupalorg-cli (Highly Recommended)
+
+`drupal-contribute-fix` should focus on bug identification, triage quality, and report prep.
+Use `drupalorg-cli` for issue-fork, MR, and pipeline execution steps.
+
+Recommended split:
+
+- **This skill:** detect bug ownership, search/match upstream issues, build clear reproduction + test steps, prepare submission-ready notes.
+- **drupalorg-cli:** fork/remote setup, branch checkout, MR inspection, pipeline status/log checks, iterative push loop.
+
+Quick prerequisite check:
+
+```bash
+drupalorg --version
+php -v
+```
+
+Use `drupalorg-cli` commands (0.8+ expected, PHP 8.1+):
+
+```bash
+drupalorg issue:show <nid> --format=llm
+drupalorg issue:get-fork <nid> --format=llm
+drupalorg issue:setup-remote <nid>
+drupalorg issue:checkout <nid> <branch>
+drupalorg mr:list <nid> --format=llm
+drupalorg mr:status <nid> <mr-iid> --format=llm
+drupalorg mr:logs <nid> <mr-iid>
+```
+
+If `drupalorg-cli` is unavailable, fall back to the manual Drupal.org/GitLab flow below.
 
 ## Resolving Script Paths
 
@@ -41,6 +72,18 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" preflight \
   --out .drupal-contribute-fix
 ```
 
+### False-Positive Guard (Required)
+
+`preflight` candidate matching is heuristic. Do not treat "already fixed" output as final without verification.
+
+Before stopping work due to an "existing fix", you must verify all of the following:
+
+1. Open the referenced issue/commit and confirm its title/component matches the bug class and code area.
+2. Inspect the exact affected file/function in the target branch and confirm the bug condition is actually gone.
+3. Record file path + commit/issue evidence in your notes/report before closing/switching local tracking.
+
+If any verification step fails, treat it as a false positive and continue triage/fix flow.
+
 This takes 30 seconds and may save hours of duplicate work.
 
 **Important:** Drupal.org's `api-d7` endpoint does **not** support a full-text `text=` filter (it returns HTTP 412). If you need a manual keyword search link, use the Drupal.org UI search:
@@ -62,9 +105,11 @@ If the `drupal-issue-queue` skill is also available, use it for deeper triage an
 
 If the tool isn’t in a standard location, set `DRUPAL_ISSUE_QUEUE_DIR=/path/to/drupal-issue-queue`.
 
-## LAST STEP - After Making Any Local Fix
+## LAST STEP - Produce a Handoff (Always)
 
-**After you fix the bug locally, you MUST run `package` to generate contribution artifacts.**
+This skill should always end with a clear handoff package for upstream contribution.
+
+If you made local code changes, run `package`:
 
 ```bash
 python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
@@ -75,18 +120,18 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --out .drupal-contribute-fix
 ```
 
-This generates:
-- A properly-named patch file for drupal.org
-- A paste-ready issue comment
-- A report with next steps
+If you did triage-only (no local code change), preserve `preflight` evidence and provide:
+- The best-match issue(s)/MR(s)
+- Specific reproduction + expected behavior steps
+- Suggested `drupalorg-cli` commands to continue contribution work
 
-**Then tell the user** about the generated files and guide them through submission.
+**Then tell the user** where the artifacts are and what to run next.
 
 ## NEVER DELETE Contribution Artifacts
 
 **DO NOT delete these files:**
 - `.drupal-contribute-fix/` directory
-- Patch files in `patches/`
+- Diff files in `diffs/`
 - `ISSUE_COMMENT.md`
 - `REPORT.md`
 
@@ -98,14 +143,14 @@ so the fix can be submitted upstream. The whole point is to help the Drupal comm
 ```
 1. DETECT    → Error from contrib/core? Trigger activated.
 2. PREFLIGHT → Search drupal.org BEFORE writing code
-3. DECIDE    → Use existing fix OR proceed with new fix
-4. FIX       → Make the local fix (edit files, create composer patch)
-5. PACKAGE   → Run `package` command to generate contribution artifacts
-6. PRESERVE  → Keep .drupal-contribute-fix/ and patches/ directories
-7. GUIDE     → Tell user: "Here's how to submit this upstream..."
+3. TRIAGE    → Verify/score candidates, avoid false positives
+4. PREP      → Produce report-quality repro/test steps and recommendation
+5. PACKAGE   → If code changed, run `package`; otherwise keep preflight evidence only
+6. HANDOFF   → Prefer `drupalorg-cli` for fork/MR/pipeline execution
+7. PRESERVE  → Keep .drupal-contribute-fix/ artifacts for follow-up
 ```
 
-**Steps 5-7 are MANDATORY.** Don't just fix locally and move on.
+**Steps 4-7 are MANDATORY.** Don't stop at "issue found"; leave an actionable handoff.
 
 ## When to Use This Skill
 
@@ -136,9 +181,9 @@ so the fix can be submitted upstream. The whole point is to help the Drupal comm
    - `docroot/core/*` or `web/core/*`
    - `docroot/themes/contrib/*` or `web/themes/contrib/*`
 
-3. **You are about to create a Composer patch for `drupal/*`**
-   - Adding to `extra.patches` in composer.json
-   - Creating files in `patches/` directory for Drupal packages
+3. **You are about to modify contrib/core code that should go upstream**
+   - Replacing ad-hoc Composer patching with a real MR contribution
+   - Converting temporary local fixes into issue-fork/MR work
 
 4. **Custom module encounters a bug in core/contrib**
    - Custom code works correctly but triggers a bug in contrib/core
@@ -150,11 +195,11 @@ so the fix can be submitted upstream. The whole point is to help the Drupal comm
 
 ### This Skill is NOT Just for "Upstream Contributions"
 
-**Common misconception:** This skill is only for contributing patches to drupal.org.
+**Common misconception:** This skill is only for patch uploads to drupal.org.
 
 **Reality:** Use it for ALL local fixes to contrib modules. Why?
 - The bug may already be fixed upstream (save yourself the work)
-- An existing patch may exist that you can just apply
+- An existing MR or attachment may already solve it
 - Even if you need a local fix NOW, the preflight search is fast
 
 ### How to Recognize Contrib/Core Errors
@@ -182,61 +227,66 @@ modules/custom/mymodule/src/...
 ## What To Do
 
 1. **FIRST**: Run `preflight` to search drupal.org (even for "local fixes")
-2. **IF** existing fix found: Use it instead of writing your own
-3. **IF** no fix found: Make the local fix, then run `package` to generate contribution artifacts
-4. **AFTER FIXING**: Run `package` command to create patch + issue comment
-5. **PRESERVE**: Keep `.drupal-contribute-fix/` directory - NEVER delete it
-6. **GUIDE USER**: Tell them about the generated files and how to submit to drupal.org
+2. **TRIAGE**: Verify candidate quality (issue title/component/file/function match)
+3. **DOCUMENT**: Write precise reproduction, before/after behavior, and test steps
+4. **IF CODE CHANGED**: Run `package` to generate artifacts; otherwise keep preflight outputs
+5. **HANDOFF TO CLI**: Recommend `drupalorg-cli` commands for fork/MR/pipeline flow
+6. **PRESERVE**: Keep `.drupal-contribute-fix/` directory - NEVER delete it
+7. **GUIDE USER**: Tell them the exact next command(s) to run
 
 ## What This Skill Does
 
-1. **Searches drupal.org** for existing issues matching your bug/fix
-2. **Checks for existing solutions** (MRs, patches, closed-fixed status)
-3. **Decides whether to proceed** or stop (use existing fix)
-4. **Generates contribution artifacts** when appropriate:
+1. **Identifies contrib/core bug ownership** from symptoms, paths, and stack traces
+2. **Searches drupal.org** for existing issues/MRs/attachments matching the bug
+3. **Validates candidate relevance** before declaring "already fixed"
+4. **Builds report-quality issue content** (repro steps, expected/actual behavior, rationale)
+5. **Generates contribution artifacts** when local code changes exist:
    - Paste-ready issue comment
-   - Properly-named patch file
+   - Properly-named local `.diff` file
    - Validation results (php lint, phpcs if available)
+6. **Hands off execution to `drupalorg-cli`** for branch/MR/pipeline actions
 
 ## Mandatory Gatekeeper Behavior
 
-**No new patch file may be generated until upstream search + "already fixed?" checks are complete.**
+**No new local diff artifact may be generated until upstream search + "already fixed?" checks are complete.**
+**No "STOP existing fix found" decision may be accepted until the file-level verification steps above are completed.**
 
 The skill ends in exactly one of these outcomes:
 
 | Exit Code | Outcome | Meaning |
 |-----------|---------|---------|
-| 0 | PROCEED | Patch (or test patch) generated |
-| 10 | STOP | Existing upstream fix found (MR-based, patch-based, or closed-fixed) |
+| 0 | PROCEED | MR artifacts + local diff generated |
+| 10 | STOP | Existing upstream fix found (MR-based, historical patch attachments, or closed-fixed) |
 | 20 | STOP | Fixed upstream in newer version (reserved for future use) |
-| 30 | STOP | Analysis-only recommended (patch would be hacky/broad) |
+| 30 | STOP | Analysis-only recommended (change would be hacky/broad) |
 | 40 | ERROR | Couldn't determine project/baseline, network failure |
 | 50 | STOP | Security-related issue detected (follow security team process) |
 
 **Workflow modes:** When an existing fix is found (exit 10), the skill reports whether the
-issue is MR-based or patch-based to guide the contributor on how to proceed.
+issue has an active MR or only historical patch attachments to guide contributor workflow.
 
-## Workflow Hygiene (MR vs Patch)
+## Workflow Hygiene (MR-first)
 
-Drupal issues increasingly use **Merge Requests (MRs)**. Some issues are still **patch-based**.
-To reduce maintainer back-and-forth, this skill now **records which workflow you're in**.
+Drupal contributions should be handled through **Merge Requests (MRs)**.
+To reduce maintainer back-and-forth, this skill records workflow context but defaults to MR-only contributions for new work.
+When available, drive execution with `drupalorg-cli` instead of manual UI/Git steps.
 
 Outputs (in every issue directory):
-- `WORKFLOW.md` - at-a-glance workflow decision (MR-based vs patch-based) + links + guidance
+- `WORKFLOW.md` - at-a-glance workflow decision + links + MR-first guidance
 - `REPORT.md` - includes a **Workflow** section near the top
 - `ISSUE_COMMENT.md` - template is workflow-aware:
-  - MR-based: comment template points to the existing MR(s) (no patch upload)
-  - Patch-based: comment template assumes patch + interdiff workflow
+  - MR-based: comment template points to the existing MR(s)
+  - Historical patch attachments: comment template still directs follow-up via MR workflow
 
 Rule of thumb:
 - **MR-based issues:** contribute via GitLab MR/issue fork branch; don't upload new patches to the Drupal.org issue unless maintainers request it.
-- **Patch-based issues:** stay in patch workflow (reroll/update patch + attach interdiff).
+- **Issues with only historical patch attachments:** use MR workflow for new work; use old attachments as context.
 
 ## Commands
 
 ### Preflight (search only)
 
-Search drupal.org for existing issues without generating a patch:
+Search drupal.org for existing issues without generating local artifacts:
 
 ```bash
 python3 "$DCF_ROOT/scripts/contribute_fix.py" preflight \
@@ -244,6 +294,20 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" preflight \
   --keywords "TypeError MetatagManager::build" \
   --paths "src/MetatagManager.php" \
   --out .drupal-contribute-fix
+```
+
+### drupalorg-cli handoff (preferred execution path)
+
+After triage identifies the target issue/MR, use `drupalorg-cli` for issue-fork and MR execution:
+
+```bash
+drupalorg issue:show <nid> --format=llm
+drupalorg issue:get-fork <nid> --format=llm
+drupalorg issue:setup-remote <nid>
+drupalorg issue:checkout <nid> <branch>
+drupalorg mr:list <nid> --format=llm
+drupalorg mr:status <nid> <mr-iid> --format=llm
+drupalorg mr:logs <nid> <mr-iid>
 ```
 
 ### Package (search + generate)
@@ -256,6 +320,7 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --root /path/to/drupal/site \
   --changed-path web/modules/contrib/metatag \
   --keywords "TypeError MetatagManager::build" \
+  --test-steps "Enable metatag" "Visit affected page" "Confirm fixed behavior" \
   --out .drupal-contribute-fix
 
 # For docroot/ layout (common in Acquia/BLT projects):
@@ -263,15 +328,16 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --root /path/to/drupal/site \
   --changed-path docroot/modules/contrib/mcp \
   --keywords "module not installed" "update_get_available" \
+  --test-steps "Set up failing config" "Trigger failing code path" "Confirm expected post-fix result" \
   --out .drupal-contribute-fix
 ```
 
-**Note:** `package` always runs `preflight` first and refuses to generate a patch
+**Note:** `package` always runs `preflight` first and refuses to generate local artifacts
 if an existing fix is found (unless `--force` is provided).
 
 ### Test (generate RTBC comment)
 
-Generate a Tested-by/RTBC comment for an existing MR or patch you've tested:
+Generate a Tested-by/RTBC comment for an existing MR or diff artifact you've tested:
 
 ```bash
 python3 "$DCF_ROOT/scripts/contribute_fix.py" test \
@@ -284,9 +350,9 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" test \
 Options: `--result` can be `pass`, `fail`, or `partial`. Use `--mr` or `--patch`
 to specify which artifact you tested.
 
-### Reroll (patch for different version)
+### Reroll (legacy patch-only issues)
 
-Reroll an existing patch that doesn't apply to your version:
+Legacy fallback only: reroll an existing patch attachment when maintainers explicitly request patch workflow:
 
 ```bash
 python3 "$DCF_ROOT/scripts/contribute_fix.py" reroll \
@@ -297,7 +363,7 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" reroll \
 ```
 
 This downloads the patch, attempts to apply it to your target branch, and generates
-a rerolled patch if needed (or confirms it applies cleanly).
+a rerolled patch if needed (or confirms it applies cleanly). Prefer MR workflow for new contributions.
 
 ### Common Options
 
@@ -308,9 +374,9 @@ a rerolled patch if needed (or confirms it applies cleanly).
 | `--paths` | Relevant file paths (space-separated) |
 | `--out` | Output directory for artifacts |
 | `--offline` | Use cached data only, don't hit API |
-| `--force` | Override gatekeeper and generate patch anyway |
+| `--force` | Override gatekeeper and generate local diff artifact anyway |
 | `--issue` | Known issue number (runs gatekeeper check against this issue) |
-| `--detect-deletions` | Include deleted files in patch (risky with Composer trees) |
+| `--detect-deletions` | Include deleted files in diff (risky with Composer trees) |
 | `--test-steps` | **REQUIRED** Specific test steps for the issue (agent must provide) |
 
 ### Test Steps (MANDATORY)
@@ -324,16 +390,16 @@ python3 "$DCF_ROOT/scripts/contribute_fix.py" package \
   --test-steps \
     "Enable MCP module with Update module disabled" \
     "Call the general:status tool via MCP endpoint" \
-    "Before patch: Fatal error - undefined function update_get_available()" \
-    "After patch: JSON response with status unavailable" \
+    "Before fix: Fatal error - undefined function update_get_available()" \
+    "After fix: JSON response with status unavailable" \
   --out .drupal-contribute-fix
 ```
 
 Test steps should:
 1. Describe how to set up the environment to reproduce the bug
 2. Describe the action that triggers the bug
-3. Describe the expected behavior BEFORE the patch (the bug)
-4. Describe the expected behavior AFTER the patch (the fix)
+3. Describe the expected behavior BEFORE the fix (the bug)
+4. Describe the expected behavior AFTER the fix (the fix)
 
 ## Output Files
 
@@ -343,13 +409,18 @@ Test steps should:
 ├── 3541839-fix-metatag-build/            # Known issue
 │   ├── REPORT.md                         # Analysis & next steps
 │   ├── ISSUE_COMMENT.md                  # Paste-ready drupal.org comment
-│   └── patches/
-│       └── project-fix-3541839.patch
+│   └── diffs/
+│       └── project-fix-3541839.diff
+├── 3573571-component-context/            # Optional local CI evidence
+│   ├── LOCAL_CI_PARITY_2026-02-16.md     # Job/result summary + commands
+│   └── ci/
+│       ├── canvas-ci-local-full-20260216.log
+│       └── canvas-ci-local-rerun-20260216.log
 └── unfiled-update-module-check/          # New issue needed
     ├── REPORT.md
     ├── ISSUE_COMMENT.md
-    └── patches/
-        └── project-fix-new.patch
+    └── diffs/
+        └── project-fix-new.diff
 ```
 
 **Directory naming:**
@@ -358,6 +429,24 @@ Test steps should:
 
 **Preflight vs Package:** `preflight` only updates `UPSTREAM_CANDIDATES.json`.
 Issue directories are created by `package` when generating artifacts.
+
+## Local CI Evidence Artifacts (Recommended)
+
+If local CI parity tooling is available (for example `gitlab-ci-local`), keep
+evidence under the issue directory in `.drupal-contribute-fix/`:
+
+- `LOCAL_CI_PARITY_YYYY-MM-DD.md`: concise summary with exact commands, exit codes,
+  pass/fail/incomplete jobs, and blocker details.
+- `ci/*.log`: raw logs for audit/debug follow-up.
+- `drupal-contribute-fix package` now auto-creates `LOCAL_CI_PARITY_YYYY-MM-DD.md`
+  when `ci/*.log` exists in that issue directory and no parity summary file exists yet.
+
+Rules:
+- These are local review artifacts, not upstream contribution artifacts.
+- Keep them out of MR diffs.
+- If local CI tooling mutates tracked files, restore tracked files before preparing
+  the final MR diff.
+- If the tooling is unavailable, record `not run` and why.
 
 ## Security Issue Handling
 
@@ -376,8 +465,8 @@ https://www.drupal.org/drupal-security-team/security-team-procedures
 
 The skill enforces contribution best practices:
 
-- **Warns** if patch touches >3 files or has large LOC changes
-- **Separates** "must fix" from "nice-to-haves" (nice-to-haves excluded from patch)
+- **Warns** if a change touches >3 files or has large LOC changes
+- **Separates** "must fix" from "nice-to-haves" (nice-to-haves excluded from submitted change)
 - **Detects** patterns likely to be rejected:
   - Broad cache disables/bypasses
   - Swallowed exceptions
@@ -396,151 +485,72 @@ The skill runs validation and reports results honestly:
 
 ## After Completion - What To Tell The User
 
-When you finish fixing the bug, **you MUST inform the user** about the contribution artifacts:
+When triage/fix is complete, **you MUST inform the user** about the contribution artifacts and provide a CLI-first handoff:
 
 ```
-I've fixed the bug locally and generated contribution artifacts:
+I completed contrib/core bug triage and prepared contribution artifacts:
 
 📁 .drupal-contribute-fix/<nid>-<slug>/
-  - REPORT.md - Full analysis and next steps
-  - ISSUE_COMMENT.md - Copy/paste this to drupal.org
-  - patches/<patch-file>.patch - Upload this to the issue
+  - REPORT.md - Triage findings and next steps
+  - ISSUE_COMMENT.md - Copy/paste issue or MR comment text
+  - WORKFLOW.md - MR/patch workflow recommendation
+  - diffs/<diff-file>.diff - Present only when code changed (local artifact)
 
-**To contribute this fix upstream:**
-1. Go to: https://www.drupal.org/node/<nid>
-2. Paste the content from ISSUE_COMMENT.md as a new comment
-3. Attach the patch file
-4. Set status to "Needs review"
+**Recommended next commands (drupalorg-cli):**
+drupalorg issue:show <nid> --format=llm
+drupalorg issue:get-fork <nid> --format=llm
+drupalorg issue:setup-remote <nid>
+drupalorg issue:checkout <nid> <branch>
+drupalorg mr:list <nid> --format=llm
 ```
 
 For unfiled issues (no existing drupal.org issue found):
 ```
 📁 .drupal-contribute-fix/unfiled-<slug>/
-  - Create a new issue at https://www.drupal.org/project/issues/<project>
+  - Create a new issue at https://www.drupal.org/project/issues/<project> first
   - Use ISSUE_COMMENT.md as the issue description template
-  - Attach the patch file
+  - Then continue with drupalorg-cli using the new issue NID
 ```
 
 **DO NOT skip this step.** The user may not know about the contribution workflow.
 
-## Drupal.org GitLab Workflow
+## Drupal.org GitLab Workflow (CLI-first)
 
-**All Drupal core and contrib contributions use GitLab merge requests.** Patches are still accepted but merge requests are the preferred workflow.
+**All Drupal core and contrib contributions use GitLab merge requests.** Patch uploads are exception-only when explicitly requested by maintainers.
 
 **Reference**: https://www.drupal.org/docs/develop/git/using-gitlab-to-contribute-to-drupal
 
-### Issue Forks
-
-An issue fork is a temporary repository copy for working on code changes. It begins as a duplicate of the main project repository but allows community members to commit and push modifications.
-
-**To create an issue fork:**
-1. Navigate to the issue on drupal.org
-2. Click the **"Create issue fork"** button below the issue summary
-3. Optionally create a new branch from the default branch
-
-**Branch naming convention:**
-- Format: `ISSUE_NUMBER-description-from-title`
-- Example: `3982435-ckeditor-5-compatibility`
-- Keep names concise and hyphenated
-- You can modify auto-generated names if they're truncated
-
-### Working with Issue Forks Locally
-
-**Prerequisites:**
-- Git configured with SSH or HTTPS authentication
-- Clone of the main repository
-
-**Step-by-step process:**
+### Preferred command sequence
 
 ```bash
-# 1. Ensure you have the latest code
-git pull
-
-# 2. Request push access by clicking "Get push access" on the issue page
-
-# 3. Add the fork remote (copy commands from "Show commands" on issue page)
-git remote add drupal-ISSUE_NUMBER git@git.drupal.org:issue/PROJECT-ISSUE_NUMBER.git
-
-# 4. Checkout the issue branch
-git fetch drupal-ISSUE_NUMBER
-git checkout -b ISSUE_NUMBER-description drupal-ISSUE_NUMBER/ISSUE_NUMBER-description
-
-# Or create a new branch
-git checkout -b ISSUE_NUMBER-my-description
-
-# 5. Verify your branch
-git branch --show-current
-
-# 6. Make your changes, then stage and commit
-git add -A
-git commit -m "Issue #ISSUE_NUMBER: Description of changes"
-
-# 7. Push to the fork
-git push drupal-ISSUE_NUMBER BRANCH_NAME
+drupalorg issue:show <nid> --format=llm
+drupalorg issue:get-fork <nid> --format=llm
+drupalorg issue:setup-remote <nid>
+drupalorg issue:checkout <nid> <branch>
+drupalorg mr:list <nid> --format=llm
+drupalorg mr:status <nid> <mr-iid> --format=llm
+drupalorg mr:logs <nid> <mr-iid>
 ```
 
-### Creating Merge Requests
-
-**After pushing your changes:**
-
-1. Navigate to the issue page and locate the Issue fork section
-2. Click **"Compare"** on your working branch
-3. Click **"Create new..."** and select **"New merge request"**
-
-**Fill out the merge request form:**
-
-| Field | Guidance |
-|-------|----------|
-| **Title** | Format: `Issue #ISSUE_NUMBER: brief_description` |
-| **Description** | Explain the problem, your solution, and any limitations |
-| **Mark as draft** | Check if work-in-progress |
-| **Delete source branch** | Check to keep repository clean |
-| **Squash commits** | Recommended for clean project history |
-| **Allow commits from members** | Keep checked to enable maintainer collaboration |
-
-**Important:** Additional commits to the same branch automatically appear in the existing merge request and trigger new test runs.
-
-### Rebasing Merge Requests
-
-Rebase when commits have been made to the base branch since your fork was created.
-
-**When rebasing is required:**
-- Merge request shows red links with merge error notices
-- Automated tests fail with "Not currently mergeable" messages
-- Conflicts exist between your changes and the base branch
-
-**GitLab UI method:**
-1. Click the merge request link from the issue fork area
-2. Click **"Rebase source branch"** link, or comment with `/rebase`
-
-**Command line method:**
+### Iteration loop (after triage)
 
 ```bash
-# Fetch latest from origin
-git fetch origin
+git add <changed-files>
+git commit -m "Issue #<nid> by <username>: <short description>"
+git push
+drupalorg mr:status <nid> <mr-iid> --format=llm
+drupalorg mr:logs <nid> <mr-iid>   # only if failing
+```
 
-# Update your local base branch
+### Rebase when needed
+
+```bash
+git fetch origin
 git checkout BASE_BRANCH_NAME
 git pull
-
-# Rebase your feature branch
 git checkout ISSUE_BRANCH_NAME
 git rebase BASE_BRANCH_NAME
-
-# Resolve any conflicts if needed, then push
-git push --force-with-lease drupal-ISSUE_NUMBER
-```
-
-**Rebasing to a new base branch** (e.g., when 10.4.x becomes 11.0.x):
-
-```bash
-git fetch origin
-git switch NEW_BASE_BRANCH_NAME
-git pull
-git switch FEATURE_BRANCH
-git switch -c NEW_FEATURE_BRANCH
-git rebase --onto NEW_BASE_BRANCH_NAME OLD_BASE_BRANCH_NAME
-git push --force-with-lease drupal-ISSUE_NUMBER
+git push --force-with-lease
 ```
 
 ### GitLab CI Automated Testing
@@ -554,17 +564,32 @@ git push --force-with-lease drupal-ISSUE_NUMBER
 - Project-specific PHPUnit tests
 
 **Interpreting results:**
-1. Navigate to Build → Pipelines in GitLab sidebar
-2. View pipeline status showing passed/failed jobs
-3. Click individual jobs to see full console output
-4. Test result summaries highlight failures
+1. Check pipeline status with `drupalorg mr:status <nid> <mr-iid> --format=llm`
+2. If failing, inspect logs with `drupalorg mr:logs <nid> <mr-iid>`
+3. Apply fixes, push again, and re-check status
 
 **Triggering test re-runs:**
-- Comment `/rebase` to rebase and re-run
-- Use "Run Pipelines" button from project interface
 - Push additional commits to the branch
 
 **Important:** GitLab CI uses `phpunit.xml.dist`, `phpstan.neon.dist` and other `.dist` files. Review these files as they may cause unexpected test failures.
+
+### Manual fallback (only when drupalorg-cli is unavailable)
+
+If `drupalorg-cli` cannot run in the environment, use the issue page's **Issue fork**
+controls and standard Git/GitLab UI as a fallback.
+
+### Local CI Parity (Best Effort)
+
+If local CI tooling exists in the contributor environment, run parity checks and
+archive evidence under `.drupal-contribute-fix/<issue>/`:
+
+1. Save the exact command line(s) and exit status.
+2. Save raw logs in `ci/`.
+3. Summarize outcomes in `LOCAL_CI_PARITY_YYYY-MM-DD.md` (auto-scaffolded by
+   `package` when `ci/*.log` is present).
+
+If local parity tooling is not installed or blocked by environment constraints,
+state that clearly and do not claim full local parity.
 
 ### Drupal Core Contributions
 
@@ -585,29 +610,27 @@ See [references/core-testing.md](references/core-testing.md) for:
 ### Contribution Workflow Summary
 
 ```
-1. Find/create issue on drupal.org
-2. Create issue fork (click button on issue page)
-3. Clone fork locally and create branch
-4. Make changes with test coverage (required for core)
-5. Push to fork
-6. Create merge request
-7. Respond to review feedback
-8. Rebase if needed when base branch updates
-9. Wait for RTBC and maintainer merge
+1. Detect + triage bug with `preflight`
+2. Prepare report-quality reproduction and test steps
+3. Identify target issue/MR (or file a new issue)
+4. Use `drupalorg-cli` to set up fork remote + checkout branch
+5. Make changes with test coverage (required for core)
+6. Push commits and monitor MR pipeline
+7. Iterate until pipeline is green and review feedback is addressed
 ```
 
-### Key Git Commands Reference
+### Key Command Reference
 
 | Task | Command |
 |------|---------|
-| Verify current branch | `git branch --show-current` |
-| Check status | `git status` |
-| View changes | `git diff` |
-| Stage all changes | `git add -A` |
-| Commit changes | `git commit -m "Issue #NUMBER: message"` |
-| Push to fork | `git push drupal-ISSUE_NUMBER BRANCH_NAME` |
-| Force push after rebase | `git push --force-with-lease drupal-ISSUE_NUMBER` |
-| Rebase on base branch | `git rebase BASE_BRANCH_NAME` |
+| Show issue details | `drupalorg issue:show <nid> --format=llm` |
+| Inspect fork + branches | `drupalorg issue:get-fork <nid> --format=llm` |
+| Set up issue fork remote | `drupalorg issue:setup-remote <nid>` |
+| Check out issue branch | `drupalorg issue:checkout <nid> <branch>` |
+| List MRs | `drupalorg mr:list <nid> --format=llm` |
+| Check MR pipeline | `drupalorg mr:status <nid> <mr-iid> --format=llm` |
+| Read failing job logs | `drupalorg mr:logs <nid> <mr-iid>` |
+| Push latest commit(s) | `git push` |
 
 ## References
 

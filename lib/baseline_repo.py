@@ -389,13 +389,24 @@ def checkout_baseline(
                             capture_output=True,
                             text=True,
                         )
-                        subprocess.run(
-                            ["git", "checkout", f"origin/{baseline.ref}"],
-                            cwd=checkout_path,
-                            check=True,
-                            capture_output=True,
-                            text=True,
-                        )
+                        # Some refs (like GitLab MR refs) are not remote-tracking
+                        # branches under origin/* and only exist in FETCH_HEAD.
+                        if baseline.ref.startswith("refs/"):
+                            subprocess.run(
+                                ["git", "checkout", "FETCH_HEAD"],
+                                cwd=checkout_path,
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                            )
+                        else:
+                            subprocess.run(
+                                ["git", "checkout", f"origin/{baseline.ref}"],
+                                cwd=checkout_path,
+                                check=True,
+                                capture_output=True,
+                                text=True,
+                            )
                     except subprocess.CalledProcessError:
                         raise BaselineError(f"Failed to checkout ref {baseline.ref}: {e.stderr}")
 

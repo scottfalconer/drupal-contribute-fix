@@ -1,7 +1,7 @@
 """
-Patch generation and packaging.
+Diff artifact generation and packaging.
 
-Creates properly-formatted patches for Drupal.org contribution.
+Creates properly-formatted local diff artifacts for MR review.
 """
 
 import os
@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 @dataclass
 class PatchInfo:
-    """Information about a generated patch."""
+    """Information about a generated local diff artifact."""
     path: Path
     filename: str
     project: str
@@ -30,14 +30,14 @@ class PatchInfo:
 
 @dataclass
 class ScopeWarning:
-    """Warning about patch scope."""
+    """Warning about change scope."""
     level: str  # "info", "warning", "error"
     message: str
     files: List[str] = field(default_factory=list)
 
 
 class PatchError(Exception):
-    """Error generating patch."""
+    """Error generating diff artifact."""
     pass
 
 
@@ -204,6 +204,54 @@ def filter_packaging_from_diff(diff_content: str) -> str:
     return '\n'.join(result_lines)
 
 
+def compute_diffstat_from_patch(diff_content: str, baseline_path: Path) -> Tuple[int, int, int]:
+    """
+    Compute diffstat from the patch content that will actually be written.
+
+    This keeps report counts consistent with filtered patches (for example when
+    packaging-only .info.yml changes are removed).
+    """
+    if not diff_content.strip():
+        return 0, 0, 0
+
+    # Prefer Git's own numstat parser for accuracy (handles renames/binaries).
+    try:
+        result = subprocess.run(
+            ["git", "apply", "--numstat"],
+            cwd=baseline_path,
+            input=diff_content,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        files_changed = 0
+        insertions = 0
+        deletions = 0
+        for line in result.stdout.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            files_changed += 1
+            if parts[0].isdigit():
+                insertions += int(parts[0])
+            if parts[1].isdigit():
+                deletions += int(parts[1])
+        return files_changed, insertions, deletions
+    except subprocess.CalledProcessError:
+        # Fall back to lightweight parsing if git numstat parsing fails.
+        files_changed = 0
+        insertions = 0
+        deletions = 0
+        for line in diff_content.split('\n'):
+            if line.startswith('diff --git '):
+                files_changed += 1
+            elif line.startswith('+') and not line.startswith('+++'):
+                insertions += 1
+            elif line.startswith('-') and not line.startswith('---'):
+                deletions += 1
+        return files_changed, insertions, deletions
+
+
 def sanitize_description(description: str) -> str:
     """Sanitize description for use in filename."""
     # Convert to lowercase, replace spaces/special chars with hyphens
@@ -221,9 +269,9 @@ def generate_patch_filename(
     comment_number: Optional[int] = None
 ) -> str:
     """
-    Generate a Drupal-standard patch filename.
+    Generate a Drupal-style diff filename.
 
-    Format: [project]-[description]-[issue]-[comment].patch
+    Format: [project]-[description]-[issue]-[comment].diff
     """
     parts = [project, sanitize_description(description)]
 
@@ -235,7 +283,7 @@ def generate_patch_filename(
     if comment_number:
         parts.append(str(comment_number))
 
-    return "-".join(parts) + ".patch"
+    return "-".join(parts) + ".diff"
 
 
 def detect_hack_patterns(diff_content: str) -> List[ScopeWarning]:
@@ -274,7 +322,7 @@ def detect_problematic_files(changed_files: List[str]) -> List[ScopeWarning]:
 
 
 def check_scope(changed_files: List[str], insertions: int, deletions: int) -> List[ScopeWarning]:
-    """Check if patch scope is appropriate for contribution."""
+    """Check if change scope is appropriate for contribution."""
     warnings = []
 
     if len(changed_files) > 5:
@@ -467,17 +515,17 @@ def generate_patch(
     reduced_context: bool = False,
 ) -> PatchInfo:
     """
-    Generate a patch file from the baseline repository.
+    Generate a local diff artifact from the baseline repository.
 
     Args:
         baseline_path: Path to baseline repo with changes applied
-        output_dir: Directory to write patch file
+        output_dir: Directory to write diff artifact
         project: Project name
         description: Short description for filename
         issue_number: Issue number (optional)
         comment_number: Comment number (optional)
         new_files: List of new files to add with intent-to-add
-        use_binary: Include binary files in patch
+        use_binary: Include binary files in diff
         reduced_context: Use reduced context (-U1) for .info.yml files
 
     Returns:
@@ -526,42 +574,17 @@ def generate_patch(
     if not diff_content.strip():
         raise PatchError("No changes detected - diff is empty (or only contains packaging metadata)")
 
-    # Get diffstat
-    try:
-        stat_result = subprocess.run(
-            ["git", "diff", "--stat"],
-            cwd=baseline_path,
-            check=True,
-            capture_output=True,
-            text=True,
-        )
-        diffstat = stat_result.stdout
-    except subprocess.CalledProcessError:
-        diffstat = ""
-
-    # Parse diffstat for counts
-    files_changed = 0
-    insertions = 0
-    deletions = 0
-
-    stat_match = re.search(r'(\d+) files? changed', diffstat)
-    if stat_match:
-        files_changed = int(stat_match.group(1))
-
-    ins_match = re.search(r'(\d+) insertions?\(\+\)', diffstat)
-    if ins_match:
-        insertions = int(ins_match.group(1))
-
-    del_match = re.search(r'(\d+) deletions?\(-\)', diffstat)
-    if del_match:
-        deletions = int(del_match.group(1))
+    # Compute diffstat from the filtered diff content to avoid count drift.
+    files_changed, insertions, deletions = compute_diffstat_from_patch(
+        diff_content, baseline_path
+    )
 
     # Generate filename
     filename = generate_patch_filename(project, description, issue_number, comment_number)
     patch_path = output_dir / filename
 
-    # Write patch
-    with open(patch_path, 'w') as f:
+    # Write local diff artifact
+    with open(patch_path, 'w', encoding='utf-8') as f:
         f.write(diff_content)
 
     # Collect warnings
@@ -603,7 +626,7 @@ def generate_patch(
 
 def verify_patch_applies(patch_path: Path, baseline_path: Path) -> Tuple[bool, str]:
     """
-    Verify that a patch applies cleanly to the baseline.
+    Verify that a diff/patch file applies cleanly to the baseline.
 
     Args:
         patch_path: Path to patch file

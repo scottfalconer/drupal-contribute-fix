@@ -1,7 +1,7 @@
 # Drupal Contribution Analysis Report
 
 > **IMPORTANT:** This skill does NOT post to drupal.org on your behalf.
-> You must manually create issues, upload patches, and post comments.
+> You must manually create issues, open/update MRs, and post comments.
 
 **Generated:** 2024-01-15T14:32:00+00:00
 **Project:** metatag
@@ -58,7 +58,7 @@ if ($entity->hasLinkTemplate('canonical')) {
 
 ## 2. Generated Artifacts
 
-**Patch:** `issues/3345678/patches/metatag-fix-null-canonical-3345678.patch`
+**Local diff artifact:** `issues/3345678/diffs/metatag-fix-null-canonical-3345678.diff`
 
 **Diffstat:**
 - `src/MetatagManager.php` (+5, -2)
@@ -93,8 +93,8 @@ if ($entity->hasLinkTemplate('canonical')) {
 1. **Go to the issue:** https://www.drupal.org/node/3345678
 2. **Review MR !42** - Confirm your approach differs/improves on the existing MR
 3. **Copy/paste comment** - Use the text from `ISSUE_COMMENT.md`
-4. **Attach the patch** - Upload `patches/metatag-fix-null-canonical-3345678.patch`
-5. **Set status** - Change issue to "Needs review"
+4. **Push commits and open/update MR** from the issue fork branch
+5. **Keep local diff for review** - `diffs/metatag-fix-null-canonical-3345678.diff`
 
 ---
 
@@ -104,21 +104,21 @@ if ($entity->hasLinkTemplate('canonical')) {
 
 ---
 
-### Patch: TypeError in MetatagManager::build()
+### MR Update: TypeError in MetatagManager::build()
 
 I encountered this issue locally and reviewed MR !42.
 
-**How my patch differs:** MR !42 uses the `@` error suppression operator, which would hide other potential errors. My patch uses an explicit `hasLinkTemplate()` check instead.
+**How my change differs:** MR !42 uses the `@` error suppression operator, which would hide other potential errors. My change uses an explicit `hasLinkTemplate()` check instead.
 
-**Attached patch:** `metatag-fix-null-canonical-3345678.patch`
+**Local diff artifact:** `metatag-fix-null-canonical-3345678.diff`
 
-**What this patch does:**
+**What this change does:**
 - Fixes TypeError in `src/MetatagManager.php`
 - Adds explicit null handling instead of error suppression
 
 **Steps to test:**
 1. Reproduce the issue: trigger `TypeError in MetatagManager::build()`
-2. Apply the patch: `git apply <patch-file>`
+2. Apply the diff: `git apply <diff-file>`
 3. Verify: confirm `src/MetatagManager.php` no longer triggers the error
 4. Run existing tests: `phpunit` (if available)
 
@@ -126,7 +126,7 @@ I encountered this issue locally and reviewed MR !42.
 
 ## Nice-to-haves (Excluded from Patch)
 
-To keep this patch minimal and focused, the following improvements were identified but **not included**:
+To keep this change minimal and focused, the following improvements were identified but **not included**:
 
 - Refactoring the entire `build()` method for better testability
 - Adding unit test coverage (would require test infrastructure changes)

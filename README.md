@@ -28,6 +28,7 @@ To ensure contributions are helpful rather than overwhelming, this skill enforce
 - [How It Works](#how-it-works)
 - [What You Get](#what-you-get)
 - [Quick Start](#quick-start)
+- [DDEV + drupalorg-cli Setup (Recommended)](#ddev--drupalorg-cli-setup-recommended)
 - [Workflow Modes](#workflow-modes)
 - [Options](#options)
 - [Exit Codes (Gatekeeper Behavior)](#exit-codes-gatekeeper-behavior)
@@ -42,9 +43,9 @@ To ensure contributions are helpful rather than overwhelming, this skill enforce
 | :x: Without this Skill | :white_check_mark: With `drupal-contribute-fix` |
 | :--- | :--- |
 | **Duplicate Work:** Agent ignores existing MRs/patches. | **Upstream-aware:** Searches Drupal.org and surfaces existing fixes. |
-| **Tech Debt:** Fixes are buried in `vendor/` or `core/`. | **Standardized:** Generates patches in `patches/`. |
+| **Tech Debt:** Fixes are buried in `vendor/` or `core/`. | **Standardized:** Generates local `.diff` review artifacts in `diffs/`. |
 | **Maintainer Burnout:** Spammy, low-quality issues. | **Maintainer-friendly:** Warns on risky patterns and keeps human review in the loop. |
-| **Lost Fixes:** Local patches vanish on `composer update`. | **Preserved Work:** Artifacts are saved for future rerolls. |
+| **Lost Fixes:** Local work vanishes on `composer update`. | **Preserved Work:** Artifacts are saved for future MR follow-up. |
 | **No Validation:** Errors slip through. | **Quality Gates:** Runs PHP lint and PHPCS (if available). |
 
 ---
@@ -57,7 +58,7 @@ To ensure contributions are helpful rather than overwhelming, this skill enforce
 |:---|:---|
 | Auto-post to Drupal.org | Generates files for **you** to review and paste |
 | Create issues automatically | Searches existing issues; you decide what to file |
-| Push to git.drupalcode.org | Outputs local patch files only |
+| Push to git.drupalcode.org | Outputs local artifacts only (comment + `.diff`) |
 | Bypass your review | Every artifact requires human approval before submission |
 | Spam maintainers | Stops when existing MR/patch found; encourages testing over duplicating |
 
@@ -70,7 +71,7 @@ local artifacts for you to review and submit.
 - You're providing a reroll for a different version
 - The existing fix doesn't apply to your Drupal version
 
-When using `--force`, always explain in your issue comment why a new patch was needed.
+When using `--force`, always explain in your issue comment why a local `.diff` artifact was needed.
 
 ---
 
@@ -84,7 +85,7 @@ graph TD
     B -- No Fix Found --> E{Check Dev Branch}
     E -- Fixed in Dev --> F[🛑 STOP & UPGRADE]
     E -- Bug Exists in Dev --> H{Hack Detection}
-    H -- Clean Fix --> I[✅ GENERATE PATCH]
+    H -- Clean Fix --> I[✅ GENERATE MR ARTIFACTS + DIFF]
     H -- Hacky Fix --> K[⚠️ WARN USER]
 ```
 
@@ -100,13 +101,13 @@ graph TD
 ├── 3345678-fix-metatag-build/         # Known issue with slug
 │   ├── REPORT.md                      # Analysis & next steps
 │   ├── ISSUE_COMMENT.md               # Copy/paste this to drupal.org
-│   └── patches/
-│       └── metatag-fix-3345678.patch  # Upload this to the issue
+│   └── diffs/
+│       └── metatag-fix-3345678.diff   # Local review artifact
 └── unfiled-update-module-check/       # New issue needed
     ├── REPORT.md
     ├── ISSUE_COMMENT.md
-    └── patches/
-        └── project-fix-new.patch
+    └── diffs/
+        └── project-fix-new.diff
 ```
 
 **Directory naming:** `{nid}-{slug}/` for existing issues, `unfiled-{slug}/` for new issues.
@@ -120,6 +121,8 @@ graph TD
 - Python 3.8+
 - Git
 - Internet access to drupal.org API
+- DDEV (recommended for running `drupalorg-cli`)
+- PHP 8.1+ in the runtime where `drupalorg-cli` executes
 
 ### Installation
 
@@ -127,6 +130,47 @@ graph TD
 # Clone from your preferred location
 git clone <repository-url>
 cd drupal-contribute-fix
+```
+
+## DDEV + drupalorg-cli Setup (Recommended)
+
+This skill now recommends `drupalorg-cli` for issue-fork/MR/pipeline execution.
+If your host PHP is older, run `drupalorg-cli` inside DDEV.
+
+Install a global DDEV command:
+
+```bash
+mkdir -p ~/.ddev/commands/web
+cat > ~/.ddev/commands/web/drupalorg <<'EOF'
+#!/usr/bin/env bash
+## Description: Run drupalorg-cli inside the web container
+## Usage: drupalorg [args]
+## ProjectTypes: drupal,drupal11,drupal10,drupal9,drupal8,drupal7,backdrop,php
+## ExecRaw: true
+set -euo pipefail
+PHAR="/mnt/ddev-global-cache/drupalorg-cli/drupalorg.phar"
+URL="https://github.com/mglaman/drupalorg-cli/releases/latest/download/drupalorg.phar"
+mkdir -p "$(dirname "$PHAR")"
+if [ ! -x "$PHAR" ]; then
+  curl -fsSL "$URL" -o "$PHAR"
+  chmod +x "$PHAR"
+fi
+exec php "$PHAR" "$@"
+EOF
+chmod +x ~/.ddev/commands/web/drupalorg
+```
+
+Optional shell alias:
+
+```bash
+alias drupalorg='ddev drupalorg'
+```
+
+Verify in a DDEV project directory:
+
+```bash
+ddev restart
+ddev drupalorg --version
 ```
 
 ### Usage
@@ -165,7 +209,7 @@ If `drupal-contribute-fix` can’t auto-detect `drupal-issue-queue` on your mach
 export DRUPAL_ISSUE_QUEUE_DIR=/path/to/drupal-issue-queue
 ```
 
-**Search + generate patch:**
+**Search + generate MR artifacts + local diff:**
 ```bash
 python3 scripts/contribute_fix.py package \
   --changed-path /path/to/drupal/web/modules/contrib/metatag \
@@ -173,12 +217,22 @@ python3 scripts/contribute_fix.py package \
   --test-steps \
     "Enable Metatag module" \
     "Trigger the error in the UI" \
-    "Before patch: TypeError in MetatagManager" \
-    "After patch: Page renders without error" \
+    "Before fix: TypeError in MetatagManager" \
+    "After fix: Page renders without error" \
   --out .drupal-contribute-fix
 ```
 
-**Test an existing MR/patch (generate RTBC comment):**
+**Preferred handoff to drupalorg-cli (run in your Drupal project directory):**
+```bash
+drupalorg issue:show <nid> --format=llm
+drupalorg issue:get-fork <nid> --format=llm
+drupalorg issue:setup-remote <nid>
+drupalorg issue:checkout <nid> <branch>
+drupalorg mr:list <nid> --format=llm
+drupalorg mr:status <nid> <mr-iid> --format=llm
+```
+
+**Test an existing MR/diff artifact (generate RTBC comment):**
 ```bash
 python3 scripts/contribute_fix.py test \
   --issue 3345678 \
@@ -187,7 +241,7 @@ python3 scripts/contribute_fix.py test \
   --out .drupal-contribute-fix
 ```
 
-**Reroll an existing patch for your version:**
+**Reroll an existing patch for your version (legacy fallback):**
 ```bash
 python3 scripts/contribute_fix.py reroll \
   --issue 3345678 \
@@ -204,9 +258,9 @@ The skill understands Drupal's contribution workflow:
 
 | Mode | What It Means | Your Action |
 |------|---------------|-------------|
-| **MR-based** | Issue has active Merge Request | Review/update the existing MR |
-| **Patch-based** | Issue uses patch workflow | Reroll/update existing patches |
-| **New** | No existing fixes | Submit your patch |
+| **MR-based** | Issue has active Merge Request | Review/update via `drupalorg mr:*` commands |
+| **Historical patches** | Issue has patch attachments but no MR | Use MR workflow for new work |
+| **New** | No existing fixes | File issue, then use `drupalorg` issue-fork + MR flow |
 
 ---
 
@@ -218,7 +272,7 @@ The skill understands Drupal's contribution workflow:
 | `--keywords` | Error message fragments or search terms |
 | `--changed-path` | Path to modified module/theme/core directory |
 | `--issue` | Known issue number (runs gatekeeper against this issue) |
-| `--force` | Override gatekeeper and generate patch anyway |
+| `--force` | Override gatekeeper and generate local diff artifact anyway |
 | `--offline` | Use cached data only |
 | `--detect-deletions` | Include deleted files (risky with Composer trees) |
 | `--test-steps` | **Required for `package`**. Specific reproduction/verification steps |
@@ -227,12 +281,12 @@ The skill understands Drupal's contribution workflow:
 
 ## Exit Codes (Gatekeeper Behavior)
 
-The skill **refuses to generate patches** when existing upstream fixes are found:
+The skill **refuses to generate local artifacts** when existing upstream fixes are found:
 
 | Outcome | Action | Exit |
 |---------|--------|:----:|
-| :white_check_mark: **PROCEED** | Patch generated. Ready to contribute. | `0` |
-| :stop_sign: **REDIRECT** | Existing fix found. Use the upstream MR/patch. | `10` |
+| :white_check_mark: **PROCEED** | MR artifacts + local diff generated. | `0` |
+| :stop_sign: **REDIRECT** | Existing fix found. Use the upstream MR workflow. | `10` |
 | :warning: **REVIEW** | Fix deemed too broad/hacky. Post analysis first. | `30` |
 | :no_entry: **ERROR** | Network or detection failure. | `40` |
 | :lock: **SECURITY** | Security issue detected. Follow security team process. | `50` |
@@ -255,7 +309,7 @@ This skill follows the [Agent Skills specification](https://agentskills.io/speci
 #### Technical Triggers (after investigation):
 4. **Error originates FROM contrib/core** - stack trace shows `modules/contrib/`, `core/`
 5. **About to edit contrib/core files** - `*/modules/contrib/*` or `*/core/*`
-6. **About to create Composer patch** for any `drupal/*` package
+6. **About to convert local contrib/core changes into upstream MR work**
 
 **Key:** Don't wait for a stack trace. If user says "[module] has an error", trigger immediately.
 
@@ -268,7 +322,7 @@ contribute to drupal.org.
 
 **Correct usage:** Use for ALL contrib/core fixes because:
 - The fix may already exist (don't duplicate work)
-- Preflight takes 30 seconds; writing a patch takes 30 minutes
+- Preflight takes 30 seconds; reworking duplicate code takes far longer
 - Even "local fixes" should check upstream first
 
 ### How to Recognize Contrib/Core Errors
@@ -310,7 +364,7 @@ patches/drupal-*      patches/*/
 3. Check if fix already exists upstream
 4. THEN proceed with local fix if needed
 5. **AFTER fixing:** Run `package` to generate contribution artifacts
-6. **Tell user** about `.drupal-contribute-fix/` files and how to submit upstream
+6. **Tell user** about `.drupal-contribute-fix/` files and provide `drupalorg-cli` next commands
 
 **WRONG behavior:** Reading code first, finding the bug, fixing it, THEN thinking "oh maybe I should check upstream". By then you've already duplicated work.
 
@@ -328,23 +382,24 @@ The whole point is to help the Drupal community.
 ### What To Tell Users When Done
 
 ```
-I've fixed the bug locally. Here's how to contribute it upstream:
+I've completed triage/fix prep. Here's how to continue upstream:
 
 📁 .drupal-contribute-fix/<nid>-<slug>/
   - ISSUE_COMMENT.md - Copy/paste this to drupal.org
-  - patches/<file>.patch - Upload to the issue
+  - diffs/<file>.diff - Local review artifact (do not upload unless maintainers ask)
 
-Steps:
-1. Go to https://www.drupal.org/node/<nid>
-2. Paste content from ISSUE_COMMENT.md
-3. Attach the patch file
-4. Set status to "Needs review"
+Recommended commands:
+drupalorg issue:show <nid> --format=llm
+drupalorg issue:get-fork <nid> --format=llm
+drupalorg issue:setup-remote <nid>
+drupalorg issue:checkout <nid> <branch>
+drupalorg mr:list <nid> --format=llm
 ```
 
 For unfiled issues (`unfiled-<slug>/`):
 1. Create a new issue at https://www.drupal.org/project/issues/<project>
 2. Use ISSUE_COMMENT.md as the description template
-3. Attach the patch file
+3. Continue with `drupalorg` commands using the new issue NID
 
 ---
 
@@ -359,7 +414,7 @@ drupal-contribute-fix/
 │   ├── drupalorg_api.py  # Drupal.org API client
 │   ├── issue_matcher.py  # Issue search and scoring
 │   ├── baseline_repo.py  # Git baseline resolution
-│   ├── patch_packager.py # Patch generation
+│   ├── patch_packager.py # Local diff generation
 │   ├── report_writer.py  # Output file generation
 │   ├── security_detector.py
 │   └── validator.py

@@ -2,11 +2,11 @@
 """
 drupal-contribute-fix: Upstream contribution helper for Drupal.
 
-Searches drupal.org issue queue before generating patches, detects existing
+Searches drupal.org issue queue before generating local diffs, detects existing
 fixes, and packages minimal upstream-acceptable contributions.
 
 Exit codes:
-    0  - PROCEED: Patch generated
+    0  - PROCEED: MR artifacts + local diff generated
     10 - STOP: Existing upstream fix found
     20 - STOP: Fixed in newer upstream version
     30 - STOP: Analysis-only recommended
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     # Preflight command
     preflight = subparsers.add_parser(
         "preflight",
-        help="Search upstream without generating a patch",
+        help="Search upstream without generating local contribution artifacts",
     )
     preflight.add_argument(
         "--project", "-p",
@@ -149,7 +149,7 @@ def parse_args() -> argparse.Namespace:
     package.add_argument(
         "--description", "-d",
         default="fix",
-        help="Short description for patch filename",
+        help="Short description for diff filename",
     )
     package.add_argument(
         "--issue", "-i",
@@ -169,7 +169,7 @@ def parse_args() -> argparse.Namespace:
     package.add_argument(
         "--force",
         action="store_true",
-        help="Generate patch even if existing fix found",
+        help="Generate local diff artifact even if existing fix found",
     )
     package.add_argument(
         "--upstream-ref",
@@ -198,10 +198,10 @@ def parse_args() -> argparse.Namespace:
         help="Required. Specific test steps for the issue comment",
     )
 
-    # Test command - generate RTBC-style comment for existing MR/patch
+    # Test command - generate RTBC-style comment for existing MR/diff
     test_cmd = subparsers.add_parser(
         "test",
-        help="Generate a Tested-by/RTBC comment for an existing MR or patch",
+        help="Generate a Tested-by/RTBC comment for an existing MR or diff artifact",
     )
     test_cmd.add_argument(
         "--issue", "-i",
@@ -230,7 +230,7 @@ def parse_args() -> argparse.Namespace:
     )
     test_cmd.add_argument(
         "--patch",
-        help="Specific patch filename tested",
+        help="Specific diff/patch filename tested",
     )
     test_cmd.add_argument(
         "--out", "-o",
@@ -386,9 +386,9 @@ def check_existing_fix(
     """
     Check if an existing fix likely exists, with workflow-aware logic.
 
-    Per Drupal community guidelines:
+    Per Drupal contribution workflow:
     - If issue is MR-based, recommend reviewing/updating the MR
-    - If issue is patch-based, stay in patch mode (reroll/update)
+    - If issue only has historical patch attachments, recommend opening/updating an MR
     - If issue is fixed, recommend using the existing fix
 
     Returns:
@@ -407,25 +407,24 @@ def check_existing_fix(
     if workflow_mode == WORKFLOW_MODE_MR and confidence in ("high", "medium"):
         mr_list = ', '.join(best_match.mr_urls[:3])  # Limit to first 3
         reason = (
-            f"Issue is MR-based. Review/update the existing MR instead of creating a new patch.\n"
+            f"Issue is MR-based. Review/update the existing MR instead of creating a separate patch submission.\n"
             f"  Issue: {best_match.url}\n"
             f"  MR(s): {mr_list}\n\n"
-            f"To test the MR locally, download as patch:\n"
-            f"  {best_match.mr_urls[0]}.patch (if available)\n\n"
-            f"Note: Don't point Composer directly at MR URLs - download the patch file instead."
+            f"To test the MR locally, download as `.diff` or `.patch`:\n"
+            f"  {best_match.mr_urls[0]}.diff (if available)\n\n"
+            f"Note: Don't point Composer directly at MR URLs - download the file instead."
         )
         return True, reason, workflow_mode
 
-    # Patch-based issue: recommend staying in patch mode
+    # Patch-only issue: recommend MR-first workflow going forward
     if workflow_mode == WORKFLOW_MODE_PATCH and confidence in ("high", "medium"):
         reason = (
-            f"Issue is patch-based. If contributing, reroll/update the existing patch.\n"
+            f"Issue has patch attachments but no active MR.\n"
             f"  Issue: {best_match.url}\n"
             f"  Existing patches: {len(best_match.patch_urls)} attached\n\n"
-            f"Per Drupal guidelines: if an issue already has patches, keep working in patch mode."
+            f"For new work, use MR workflow: create/get push access to the issue fork, "
+            f"push commits, and open/update a merge request."
         )
-        # For patch-based issues, we don't necessarily STOP - user might want to reroll
-        # But we should warn them
         return True, reason, workflow_mode
 
     # Check top candidates for fixed status
@@ -492,6 +491,23 @@ def collect_patch_urls(api: DrupalOrgAPI, issue_nid: int, issue_data: dict) -> L
     return deduped
 
 
+def extract_mr_urls(related_mrs: List) -> List[str]:
+    """Extract MR URLs from mixed related_mrs payloads (dicts and/or strings)."""
+    urls = []
+    for mr in related_mrs or []:
+        if isinstance(mr, str):
+            if mr:
+                urls.append(mr)
+            continue
+        if isinstance(mr, dict):
+            url = mr.get("url")
+            if url:
+                urls.append(url)
+
+    seen = set()
+    return [u for u in urls if not (u in seen or seen.add(u))]
+
+
 def run_package(
     changed_path: Path,
     output_dir: Path,
@@ -509,7 +525,7 @@ def run_package(
     test_steps: List[str] = None,
 ) -> int:
     """
-    Run full package workflow - search and generate patch.
+    Run full package workflow - search and generate MR-ready artifacts + local diff.
 
     Returns:
         Exit code
@@ -581,19 +597,7 @@ def run_package(
                 # Build an IssueCandidate from the issue data
                 # Find MRs from issue detail
                 related_mrs = issue_data.get("related_mrs", []) or []
-                mr_urls = []
-                for mr in related_mrs:
-                    if isinstance(mr, str):
-                        if mr:
-                            mr_urls.append(mr)
-                        continue
-                    if isinstance(mr, dict):
-                        url = mr.get("url")
-                        if url:
-                            mr_urls.append(url)
-                # Deduplicate while preserving order.
-                seen = set()
-                mr_urls = [u for u in mr_urls if not (u in seen or seen.add(u))]
+                mr_urls = extract_mr_urls(related_mrs)
                 has_mr = bool(mr_urls)
 
                 # Find patches from node AND comments
@@ -652,12 +656,12 @@ def run_package(
         if workflow_mode == WORKFLOW_MODE_MR:
             print(f"\n*** STOP: Issue is MR-based ***")
         elif workflow_mode == WORKFLOW_MODE_PATCH:
-            print(f"\n*** STOP: Issue is patch-based ***")
+            print(f"\n*** STOP: Issue has historical patch attachments ***")
         else:
             print(f"\n*** STOP: Existing upstream fix found ***")
 
         print(f"\n{reason}")
-        print("\nUse --force to override and generate a patch anyway.")
+        print("\nUse --force to override and generate a local diff artifact anyway.")
 
         # Still write report (into issue-specific directory)
         stop_issue_nid = issue_number or (best_match.nid if best_match else None)
@@ -807,10 +811,10 @@ def run_package(
     else:
         issue_dir_name = f"unfiled-{slug}"
 
-    # Generate patch into issue-specific directory (flat structure)
-    print("\nGenerating patch...")
+    # Generate local diff into issue-specific directory (flat structure)
+    print("\nGenerating local diff artifact...")
     issue_dir = output_dir / issue_dir_name
-    patches_dir = issue_dir / "patches"
+    diffs_dir = issue_dir / "diffs"
 
     # Check for .info.yml files
     has_info_yml = any(f.endswith('.info.yml') for f in changed_files)
@@ -818,14 +822,14 @@ def run_package(
     try:
         patch_info = generate_patch(
             baseline_path=baseline_path,
-            output_dir=patches_dir,
+            output_dir=diffs_dir,
             project=project,
             description=description,
             issue_number=effective_issue,
             new_files=new,
             reduced_context=has_info_yml,
         )
-        print(f"Patch generated: {patch_info.filename}")
+        print(f"Diff generated: {patch_info.filename}")
         print(f"  Files changed: {patch_info.files_changed}")
         print(f"  +{patch_info.insertions}/-{patch_info.deletions} lines")
 
@@ -835,7 +839,7 @@ def run_package(
                 print(f"  - {warning}")
 
     except PatchError as e:
-        print(f"Error generating patch: {e}")
+        print(f"Error generating local diff artifact: {e}")
         shutil.rmtree(work_dir, ignore_errors=True)
         return EXIT_ERROR
 
@@ -861,11 +865,11 @@ def run_package(
     if patch_info.warnings and any("hack" in w.lower() for w in patch_info.warnings):
         outcome = "analysis_only"
         outcome_code = EXIT_ANALYSIS_ONLY
-        outcome_reason = "Patch contains patterns that may need review. Consider posting analysis first."
+        outcome_reason = "Diff contains patterns that may need review. Consider posting analysis first."
     else:
         outcome = "proceed"
         outcome_code = EXIT_PROCEED
-        outcome_reason = "Patch generated successfully."
+        outcome_reason = "Local diff artifact generated successfully for MR workflow."
 
     report = create_report(
         project=project,
@@ -887,7 +891,7 @@ def run_package(
     print(f"\nArtifacts written to: {output_dir}/")
     print(f"  - {issue_dir_name}/REPORT.md")
     print(f"  - {issue_dir_name}/ISSUE_COMMENT.md")
-    print(f"  - {issue_dir_name}/patches/{patch_info.filename}")
+    print(f"  - {issue_dir_name}/diffs/{patch_info.filename}")
 
     # Cleanup
     shutil.rmtree(work_dir, ignore_errors=True)
@@ -905,7 +909,7 @@ def run_test(
     patch_name: Optional[str] = None,
 ) -> int:
     """
-    Generate a Tested-by/RTBC comment for an existing MR or patch.
+    Generate a Tested-by/RTBC comment for an existing MR or diff artifact.
 
     Returns:
         Exit code (0 for success)
@@ -933,16 +937,17 @@ def run_test(
     if mr_number:
         tested_artifact = f"MR !{mr_number}"
     elif patch_name:
-        tested_artifact = f"patch `{patch_name}`"
+        tested_artifact = f"diff `{patch_name}`"
     else:
         # Try to auto-detect from issue
         related_mrs = issue_data.get("related_mrs", [])
-        if related_mrs:
-            mr_url = related_mrs[0].get("url", "")
+        mr_urls = extract_mr_urls(related_mrs)
+        if mr_urls:
+            mr_url = mr_urls[0]
             mr_id = mr_url.split("/")[-1] if mr_url else "latest"
             tested_artifact = f"MR !{mr_id}"
         else:
-            tested_artifact = "the latest patch"
+            tested_artifact = "the latest diff/patch artifact"
 
     # Generate comment based on result
     lines = [
@@ -967,7 +972,7 @@ def run_test(
             f"**Environment:** {tested_on}",
             "",
             "**Steps tested:**",
-            "1. Applied the patch/checked out the MR",
+            "1. Applied the diff/checked out the MR",
             "2. [Describe what you tested]",
             "3. [Describe expected vs actual result]",
             "",
@@ -987,7 +992,7 @@ def run_test(
             f"**Environment:** {tested_on}",
             "",
             "**Steps tested:**",
-            "1. Applied the patch/checked out the MR",
+            "1. Applied the diff/checked out the MR",
             "2. [Describe what you tested]",
             "",
             "**Result:** The fix does not resolve the issue.",
@@ -1009,7 +1014,7 @@ def run_test(
             f"**Environment:** {tested_on}",
             "",
             "**Steps tested:**",
-            "1. Applied the patch/checked out the MR",
+            "1. Applied the diff/checked out the MR",
             "2. [Describe what you tested]",
             "",
             "**Result:** The fix works with caveats.",
@@ -1262,7 +1267,7 @@ def main():
             if workflow_mode == WORKFLOW_MODE_MR:
                 print(f"\n*** Issue is MR-based - review existing MR ***")
             elif workflow_mode == WORKFLOW_MODE_PATCH:
-                print(f"\n*** Issue is patch-based - consider rerolling existing patch ***")
+                print(f"\n*** Issue has historical patches - use MR workflow going forward ***")
             else:
                 print(f"\n*** Existing fix likely exists ***")
             print(f"\n{reason}")

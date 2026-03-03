@@ -90,7 +90,7 @@ class ContributionReport:
 def format_outcome_description(outcome_code: int) -> str:
     """Get description for an outcome code."""
     descriptions = {
-        0: "PROCEED - Patch generated",
+        0: "PROCEED - MR artifacts + local diff generated",
         10: "STOP - Existing upstream fix found",
         20: "STOP - Fixed in newer upstream version",
         30: "STOP - Analysis-only contribution recommended",
@@ -105,13 +105,13 @@ def _workflow_mode_label(workflow_mode: str) -> str:
     if workflow_mode == WORKFLOW_MODE_MR:
         return "MR-based"
     if workflow_mode == WORKFLOW_MODE_PATCH:
-        return "Patch-based"
+        return "Historical patches"
     return "None"
 
 
 def _generate_workflow_note(report: "ContributionReport", issue_url: Optional[str]) -> List[str]:
     """
-    Generate a short workflow note explaining whether this is MR-based or patch-based.
+    Generate workflow guidance with MR-first recommendations.
 
     This is included in REPORT.md and also written as WORKFLOW.md so future agents
     can quickly determine the intended contribution workflow.
@@ -132,32 +132,34 @@ def _generate_workflow_note(report: "ContributionReport", issue_url: Optional[st
             lines.append(f"  - {url}")
 
     if best and best.patch_urls:
-        lines.append(f"- **Existing patches:** {len(best.patch_urls)} attached")
+        lines.append(f"- **Existing diff/patch attachments:** {len(best.patch_urls)} attached")
 
     lines.append("")
     lines.append("**Guidance:**")
     if mode == WORKFLOW_MODE_MR:
         lines.extend([
             "- Work in GitLab (update the existing MR/issue fork branch).",
-            "- Do NOT upload new patch files to the Drupal.org issue unless maintainers request it.",
-            "- You may still generate a local patch for review, but treat it as local-only.",
+            "- Do NOT upload new patch files to the Drupal.org issue unless maintainers explicitly request it.",
+            "- Keep generated `.diff` artifacts local for review/reference.",
         ])
     elif mode == WORKFLOW_MODE_PATCH:
         lines.extend([
-            "- Stay in patch workflow (reroll/update the existing patch + attach interdiff).",
-            "- Avoid creating a new MR unless maintainers request it.",
+            "- Issue has historical patch attachments but no active MR.",
+            "- For new work, use MR workflow: create/update the issue fork branch and open/update an MR.",
+            "- Treat historical patch attachments as context, not the primary submission path.",
         ])
     else:
         lines.extend([
-            "- No upstream artifacts detected; default to patch workflow (attach patch to the issue).",
+            "- No upstream artifacts detected; default to MR workflow (issue fork + MR).",
+            "- Keep generated `.diff` artifacts local for review/reference.",
         ])
 
-    # If a patch was generated via --force on an MR-based issue, make that explicit.
+    # If a local diff was generated via --force on an MR-based issue, make that explicit.
     if report.patch_info and mode == WORKFLOW_MODE_MR:
         lines.extend([
             "",
-            "**Note:** A patch was generated with `--force` even though this is an MR-based issue.",
-            "Treat the patch as a review artifact only (do not upload unless asked).",
+            "**Note:** A local `.diff` artifact was generated with `--force` even though this is an MR-based issue.",
+            "Treat the `.diff` as a review artifact only (do not upload unless asked).",
         ])
 
     return lines
@@ -174,13 +176,85 @@ def _generate_workflow_markdown(report: "ContributionReport", issue_url: Optiona
     return "\n".join(lines)
 
 
+def _find_local_ci_logs(issue_dir: Path) -> List[Path]:
+    """Return local CI log files stored in the issue artifact directory."""
+    ci_dir = issue_dir / "ci"
+    if not ci_dir.exists():
+        return []
+    return sorted([p for p in ci_dir.rglob("*.log") if p.is_file()])
+
+
+def _generate_local_ci_parity_markdown(ci_logs: List[Path]) -> str:
+    """Generate LOCAL_CI_PARITY_YYYY-MM-DD.md scaffold content."""
+    lines = [
+        "# Local CI Parity",
+        "",
+        f"Generated: {datetime.now(timezone.utc).isoformat()}",
+        "",
+        "## Summary",
+        "",
+        "- Scope: [branch/MR + baseline]",
+        "- Overall result: [pass/fail/incomplete]",
+        "- Blocking jobs: [none or list]",
+        "",
+        "## Commands",
+        "",
+        "1. `[exact command]`",
+        "   - Exit status: `[code]`",
+        "   - Notes: `[key output or reason for failure]`",
+        "",
+        "## Job Outcomes",
+        "",
+        "| Job | Result | Notes |",
+        "|-----|--------|-------|",
+        "| [job-name] | [pass/fail/not run] | [details] |",
+        "",
+        "## Logs",
+        "",
+    ]
+    for path in ci_logs:
+        lines.append(f"- `{path.as_posix()}`")
+    lines.extend([
+        "",
+        "## Notes",
+        "",
+        "- Keep this file and `ci/*.log` local-only unless a maintainer asks for details.",
+    ])
+    return "\n".join(lines)
+
+
+def _ensure_local_ci_parity_file(issue_dir: Path) -> Optional[Path]:
+    """
+    Create a LOCAL_CI_PARITY scaffold when local CI logs already exist.
+
+    Returns path to the parity file when logs are present and a file exists/was created.
+    """
+    ci_logs = _find_local_ci_logs(issue_dir)
+    if not ci_logs:
+        return None
+
+    existing = sorted(issue_dir.glob("LOCAL_CI_PARITY_*.md"))
+    if existing:
+        return existing[-1]
+
+    date_suffix = datetime.now().strftime("%Y-%m-%d")
+    parity_path = issue_dir / f"LOCAL_CI_PARITY_{date_suffix}.md"
+    relative_logs = [path.relative_to(issue_dir) for path in ci_logs]
+    parity_markdown = _generate_local_ci_parity_markdown(relative_logs)
+
+    with open(parity_path, "w") as f:
+        f.write(parity_markdown)
+
+    return parity_path
+
+
 def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int] = None) -> str:
     """Generate REPORT.md content."""
     lines = [
         "# Drupal Contribution Analysis Report",
         "",
         "> **IMPORTANT:** This skill does NOT post to drupal.org on your behalf.",
-        "> You must manually create issues, upload patches, and post comments.",
+        "> You must manually create issues, open/update MRs, and post comments.",
         "",
         f"**Generated:** {report.generated_at}",
         f"**Project:** {report.project}",
@@ -205,7 +279,7 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
         "",
     ])
 
-    # Always record which workflow we should be using (MR-based vs patch-based).
+    # Always record which workflow we should be using (MR-first guidance).
     issue_url = None
     if issue_nid:
         issue_url = f"https://www.drupal.org/node/{issue_nid}"
@@ -244,7 +318,7 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             if c.workflow_mode == WORKFLOW_MODE_MR:
                 workflow_info = " **[MR-based]**"
             elif c.workflow_mode == WORKFLOW_MODE_PATCH:
-                workflow_info = " **[Patch-based]**"
+                workflow_info = " **[Historical patches]**"
             else:
                 workflow_info = ""
 
@@ -254,7 +328,7 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             if c.mr_urls:
                 lines.append(f"   - MRs: {', '.join(c.mr_urls)}")
             if c.patch_urls:
-                lines.append(f"   - Patches: {len(c.patch_urls)} attached")
+                lines.append(f"   - Diff/Patch attachments: {len(c.patch_urls)}")
             lines.append("")
     else:
         lines.extend([
@@ -268,7 +342,7 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
         if report.best_match.workflow_mode == WORKFLOW_MODE_MR:
             workflow_label = "MR-based"
         elif report.best_match.workflow_mode == WORKFLOW_MODE_PATCH:
-            workflow_label = "Patch-based"
+            workflow_label = "Historical patches (MR recommended)"
         else:
             workflow_label = "No existing artifacts"
 
@@ -301,20 +375,20 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             lines.extend([
                 "**How to test the MR locally:**",
                 "",
-                "Download as patch (don't point Composer directly at MR URLs):",
+                "Download as `.diff`/`.patch` (don't point Composer directly at MR URLs):",
                 "```bash",
-                f"curl -o mr.patch {report.best_match.mr_urls[0]}.patch",
-                "git apply mr.patch",
+                f"curl -L -o mr.diff {report.best_match.mr_urls[0]}.diff",
+                "git apply mr.diff",
                 "```",
                 "",
-                "Note: MR patch URLs change as commits are added. Download the file rather than",
+                "Note: MR diff/patch URLs change as commits are added. Download the file rather than",
                 "referencing the URL directly in composer.json.",
                 "",
             ])
 
         if report.best_match.has_patch and report.best_match.patch_urls:
             lines.extend([
-                "**Existing patches:**",
+                "**Existing diff/patch attachments:**",
                 "",
             ])
             for patch_url in report.best_match.patch_urls[:3]:  # Limit to first 3
@@ -336,12 +410,12 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             lines.append("- **Result:** Unable to verify")
         lines.append("")
 
-    # Patch information
+    # Local diff artifact information
     if report.patch_info:
         lines.extend([
             "---",
             "",
-            "## Generated Patch",
+            "## Generated Local Diff",
             "",
             f"**Filename:** `{report.patch_info.filename}`",
             "",
@@ -433,9 +507,9 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
         lines.extend([
             "---",
             "",
-            "## Nice-to-haves (Not Included in Patch)",
+            "## Nice-to-haves (Not Included in Diff)",
             "",
-            "The following improvements were identified but excluded from the patch",
+            "The following improvements were identified but excluded from the diff",
             "to keep the contribution focused:",
             "",
         ])
@@ -443,35 +517,40 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             lines.append(f"- {item}")
         lines.append("")
 
-    # Next steps - ALWAYS show this section for patches
+    # Next steps - ALWAYS show this section when a local diff artifact exists
     if report.patch_info:
+        manual_target = "drupal.org."
+        if report.best_match and report.best_match.has_mr:
+            manual_target = "drupal.org and GitLab."
         lines.extend([
             "---",
             "",
             "## What To Do Next (Manual Steps Required)",
             "",
             "> **This skill does NOT file issues or post comments automatically.**",
-            "> You must complete these steps yourself on drupal.org.",
+            f"> You must complete these steps yourself on {manual_target}",
             "",
         ])
 
         if report.best_match:
             if report.best_match.has_mr:
-                mr_id = report.best_match.mr_urls[0].split('/')[-1] if report.best_match.mr_urls else "existing MR"
+                mr_url = report.best_match.mr_urls[0] if report.best_match.mr_urls else "existing MR"
+                mr_id = mr_url.split('/')[-1] if report.best_match.mr_urls else "existing MR"
                 lines.extend([
                     f"1. **Go to the issue:** {report.best_match.url}",
-                    f"2. **Review {mr_id}** - Confirm your approach differs/improves on the existing MR",
-                    "3. **Copy/paste comment** - Use the text from `ISSUE_COMMENT.md`",
-                    f"4. **Attach the patch** - Upload `patches/{report.patch_info.filename}`",
-                    "5. **Set status** - Change issue to \"Needs review\"",
+                    f"2. **Review the existing MR ({mr_id}):** {mr_url}",
+                    "3. **Copy/paste comment** - Use the text from `ISSUE_COMMENT.md` for testing/review notes",
+                    "4. **If code changes are needed:** push commits to the issue fork branch used by the MR",
+                    f"5. **Local review artifact:** `diffs/{report.patch_info.filename}` (do not upload unless maintainers ask)",
                 ])
             else:
                 lines.extend([
                     f"1. **Go to the issue:** {report.best_match.url}",
                     "2. **Read recent comments** - Understand context before posting",
-                    "3. **Copy/paste comment** - Use the text from `ISSUE_COMMENT.md`",
-                    f"4. **Attach the patch** - Upload `patches/{report.patch_info.filename}`",
-                    "5. **Set status** - Change issue to \"Needs review\"",
+                    "3. **Get/create issue fork + branch** - Prepare an MR branch for this issue",
+                    "4. **Push your commits and open/update MR**",
+                    "5. **Copy/paste comment** - Use the text from `ISSUE_COMMENT.md`",
+                    f"6. **Local review artifact:** `diffs/{report.patch_info.filename}` (keep local unless asked)",
                 ])
         else:
             # No existing issue found - user needs to create one
@@ -480,19 +559,16 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
                 "",
                 f"1. **Go to:** https://www.drupal.org/project/issues/{report.project}",
                 "2. **Click \"Create a new issue\"**",
-                "3. **Fill in the form:**",
-                "   - **Category:** Bug report",
-                f"   - **Title:** (Suggested) `{report.keywords[0][:60] if report.keywords else 'Describe the bug'}`",
-                "   - **Description:** Copy from `ISSUE_COMMENT.md` (it has a full template)",
-                f"4. **Attach the patch:** Upload `patches/{report.patch_info.filename}`",
-                "5. **Set status:** \"Needs review\"",
-                "6. **Submit** and note the issue number for future reference",
+                f"3. **Title/description:** Use `ISSUE_COMMENT.md` as the template (suggested title: `{report.keywords[0][:60] if report.keywords else 'Describe the bug'}`)",
+                "4. **Create issue fork and branch** from the new issue page",
+                "5. **Push your commits and open an MR** from the issue fork",
+                f"6. **Local review artifact:** `diffs/{report.patch_info.filename}` (keep local unless asked)",
                 "",
                 "The `ISSUE_COMMENT.md` file contains a complete issue template you can use.",
             ])
         lines.append("")
 
-    # Next steps for STOPPED workflows (MR-based / patch-based).
+    # Next steps for STOPPED workflows (MR or historical patch attachments).
     if not report.patch_info and report.outcome_code == 10 and report.best_match:
         lines.extend([
             "---",
@@ -512,24 +588,25 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
                 "3. **Test the MR locally** and add a Tested-by/RTBC comment",
                 "4. **If changes are needed:** push commits to the issue fork branch used by the MR",
                 "",
-                "Tip: You can download the MR as a patch for local testing:",
+                "Tip: You can download the MR as a `.diff` for local testing:",
                 "```bash",
-                f"curl -L -o mr.patch {mr_url}.patch",
-                "git apply mr.patch",
+                f"curl -L -o mr.diff {mr_url}.diff",
+                "git apply mr.diff",
                 "```",
                 "",
             ])
         elif report.best_match.workflow_mode == WORKFLOW_MODE_PATCH and report.best_match.patch_urls:
             lines.extend([
                 f"1. **Go to the issue:** {report.best_match.url}",
-                "2. **Download the latest patch** and reroll/update it as needed",
-                "3. **Attach rerolled patch + interdiff** to the issue",
-                "4. **Post a comment** using `ISSUE_COMMENT.md` as a starting point",
+                "2. **Use existing attachments as context** and switch to MR workflow",
+                "3. **Create/get push access to the issue fork branch**",
+                "4. **Push commits and open/update an MR**",
+                "5. **Post a comment** using `ISSUE_COMMENT.md` as a starting point",
                 "",
             ])
         else:
             lines.extend([
-                "1. Review the issue and decide whether to proceed with a patch or create an MR.",
+                "1. Review the issue and proceed with MR workflow.",
                 "2. Post a comment with your findings and next steps.",
                 "",
             ])
@@ -574,7 +651,7 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
 
         if best.workflow_mode == WORKFLOW_MODE_MR and best.mr_urls:
             lines.extend([
-                "This issue is **MR-based**. I focused on reviewing/testing the existing MR rather than uploading a new patch.",
+                "This issue is **MR-based**. I focused on reviewing/testing the existing MR rather than uploading a patch.",
                 "",
                 "**MR(s):**",
             ])
@@ -596,9 +673,10 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
 
         if best.workflow_mode == WORKFLOW_MODE_PATCH and best.patch_urls:
             lines.extend([
-                "This issue is **patch-based**. Recommended next step is to reroll/update the latest patch and attach an interdiff.",
+                "This issue has **historical patch attachments** and no active MR.",
+                "Recommended next step: switch to MR workflow for any new work and keep old attachments as context.",
                 "",
-                "**Existing patches:**",
+                "**Existing diff/patch attachments:**",
             ])
             for url in best.patch_urls[:5]:
                 lines.append(f"- {url}")
@@ -664,15 +742,15 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "",
         ])
 
-        # Describe what the patch does based on file paths
+        # Describe what the proposed change does based on file paths
         if report.file_paths:
             php_files = [f for f in report.file_paths if f.endswith('.php')]
             if php_files:
-                lines.append(f"The attached patch modifies `{php_files[0]}` to handle this case.")
+                lines.append(f"The proposed change modifies `{php_files[0]}` to handle this case.")
             else:
-                lines.append(f"The attached patch addresses this issue.")
+                lines.append("The proposed change addresses this issue.")
         else:
-            lines.append("The attached patch addresses this issue.")
+            lines.append("The proposed change addresses this issue.")
 
         lines.extend([
             "",
@@ -680,11 +758,12 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "",
             "## Remaining tasks",
             "",
-            "- [ ] Review patch",
+            "- [ ] Create issue fork + branch",
+            "- [ ] Push commits and open MR",
             "- [ ] Test on different environments",
             "- [ ] Add/update tests if needed",
             "",
-            f"**Patch attached:** `{report.patch_info.filename}`",
+            f"**Local diff artifact:** `diffs/{report.patch_info.filename}`",
             "",
             "---",
             "",
@@ -706,47 +785,71 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "",
         ])
 
-        # Comment title - use keywords for better description
-        if report.keywords:
-            lines.append(f"### Patch: {keyword_desc}")
-        else:
-            lines.append("### Proposed fix")
-        lines.append("")
-
-        # Context about existing MR/patches - only reference if high/medium confidence
+        # Context about existing artifacts - only reference if high/medium confidence
         has_confident_match = (
             report.best_match and
             report.best_match_confidence in ("high", "medium")
         )
+        is_mr_workflow = (
+            has_confident_match and
+            report.best_match and
+            report.best_match.workflow_mode == WORKFLOW_MODE_MR
+        )
+
+        if is_mr_workflow:
+            lines.append("### MR follow-up/testing")
+            lines.append("")
+        # Comment title - use keywords for better description
+        elif report.keywords:
+            lines.append(f"### MR Update: {keyword_desc}")
+            lines.append("")
+        else:
+            lines.append("### Proposed fix")
+            lines.append("")
+
         if has_confident_match and report.best_match.has_mr:
             mr_ref = report.best_match.mr_urls[0].split('/')[-1] if report.best_match.mr_urls else "existing MR"
             lines.extend([
                 f"I encountered this issue locally and reviewed {mr_ref}.",
                 "",
-                "**How my patch differs:** [EDIT THIS - explain why your approach is different or needed]",
+                "**MR workflow note:** This issue is MR-based, so I focused on reviewing/testing",
+                "the existing MR workflow instead of uploading a patch by default.",
+                "",
+                "**If additional changes are needed:** [EDIT THIS - describe commits pushed to the MR branch]",
                 "",
             ])
         elif has_confident_match and report.best_match.has_patch:
             lines.extend([
-                "I encountered this issue locally and reviewed the existing patches.",
+                "I encountered this issue locally and reviewed the existing diff/patch attachments.",
                 "",
-                "**Why a new patch is needed:** [EDIT THIS - explain: different version? different approach? reroll?]",
+                "**MR workflow note:** I prepared this as MR-first work and kept attachments as context only.",
+                "",
+                "**If additional changes are needed:** [EDIT THIS - describe commits pushed to the MR branch]",
                 "",
             ])
         else:
             lines.extend([
-                f"I encountered `{keyword_desc}` and have attached a patch that addresses it.",
+                f"I encountered `{keyword_desc}` and prepared an MR-first fix for review.",
                 "",
             ])
 
         # Generate better description from context
-        lines.extend([
-            f"**Attached patch:** `{report.patch_info.filename}`",
-            "",
-            "**What this patch does:**",
-        ])
+        if is_mr_workflow:
+            lines.extend([
+                f"**Local review artifact (not uploaded by default):** `diffs/{report.patch_info.filename}`",
+                "",
+                "Only upload a patch if maintainers explicitly request patch workflow on the issue.",
+                "",
+                "**What this local artifact demonstrates:**",
+            ])
+        else:
+            lines.extend([
+                f"**Local diff artifact:** `diffs/{report.patch_info.filename}`",
+                "",
+                "**What this change does:**",
+            ])
 
-        # Try to infer what the patch does from file paths and keywords
+        # Try to infer what the change does from file paths and keywords
         if report.file_paths:
             main_file = report.file_paths[0] if report.file_paths else "the affected file"
             lines.append(f"- Fixes {keyword_desc} in `{main_file}`")
@@ -796,8 +899,8 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
                 "Example format:",
                 "1. Enable the MCP module with Update module disabled",
                 "2. Call the `general:status` tool via MCP endpoint",
-                "3. Before patch: Fatal error `Call to undefined function update_get_available()`",
-                "4. After patch: JSON response with `status: unavailable`",
+                "3. Before fix: Fatal error `Call to undefined function update_get_available()`",
+                "4. After fix: JSON response with `status: unavailable`",
             ])
         lines.append("")
 
@@ -889,18 +992,18 @@ def write_report(
     Write all report files to the output directory.
 
     Files are organized into issue-specific subdirectories to support
-    multiple patches per session:
+    multiple issue artifacts per session:
 
         .drupal-contribute-fix/
         ├── UPSTREAM_CANDIDATES.json      # Shared across all issues
         ├── 3541839-fix-metatag-build/    # Known issue with slug
         │   ├── ISSUE_COMMENT.md
-        │   └── patches/
-        │       └── project-fix-3541839.patch
+        │   └── diffs/
+        │       └── project-fix-3541839.diff
         └── unfiled-update-module-check/  # No issue found - new issue needed
             ├── ISSUE_COMMENT.md
-            └── patches/
-                └── project-fix-new.patch
+            └── diffs/
+                └── project-fix-new.diff
 
     Args:
         report: ContributionReport data
@@ -964,7 +1067,7 @@ def write_report(
         f.write(comment_md)
     paths["comment"] = comment_path
 
-    # WORKFLOW.md - quick at-a-glance workflow note (MR vs patch).
+    # WORKFLOW.md - quick at-a-glance workflow note (MR-first guidance).
     issue_url = None
     if issue_nid:
         issue_url = f"https://www.drupal.org/node/{issue_nid}"
@@ -976,7 +1079,12 @@ def write_report(
         f.write(workflow_md)
     paths["workflow"] = workflow_path
 
-    # Return the issue directory for patch generation
+    # LOCAL_CI_PARITY_YYYY-MM-DD.md - generated only when local CI logs exist.
+    local_ci_parity_path = _ensure_local_ci_parity_file(issue_dir)
+    if local_ci_parity_path:
+        paths["local_ci_parity"] = local_ci_parity_path
+
+    # Return the issue directory for external artifact generation
     paths["issue_dir"] = issue_dir
 
     return paths
