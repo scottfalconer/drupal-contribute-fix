@@ -19,6 +19,21 @@ metadata:
 
 Checks drupal.org before you write code, so you don't duplicate existing fixes.
 
+## What Job This Skill Does
+
+This skill helps developers who encounter a bug in Drupal contrib or core find the **fastest resolution** — whether that's an existing upstream fix, a version upgrade, or a new fix that gets packaged for contribution. Most bugs are already fixed upstream; the preflight search finds them in ~30 seconds.
+
+### Resolution Paths (fastest first)
+
+| Your Situation | What Happens | Time to Resolution |
+|---|---|---|
+| Bug already fixed in a newer version | Skill finds it, recommends upgrade | ~30 seconds |
+| Existing MR or patch on drupal.org | Skill finds and links it | ~30 seconds |
+| Bug exists, no upstream fix yet | Skill packages your fix for contribution | Minutes |
+| Security-related issue detected | Skill stops and directs to Security Team process | Immediate |
+
+The exit code system reflects these paths: most users get a resolution (exit 10 or 20) without ever creating a new patch.
+
 ## Preferred Companion Skill: drupalorg-cli (Highly Recommended)
 
 `drupal-contribute-fix` should focus on bug identification, triage quality, and report prep.
@@ -482,6 +497,14 @@ The skill runs validation and reports results honestly:
 - **Always runs:** `php -l` on changed PHP files
 - **Runs if available:** PHPCS with Drupal standard
 - **Never claims** tests passed if they weren't run
+
+## Paired With: drupal-intent-testing
+
+After fixing a contrib/core bug, consider verifying the fix from the user's perspective using the `drupal-intent-testing` skill (https://github.com/scottfalconer/drupal-intent-testing). It runs a real browser against the Drupal site to confirm the fix actually does what the user intended — not just that it doesn't error.
+
+Suggested workflow:
+1. **This skill** finds/fixes the bug and packages contribution artifacts
+2. **drupal-intent-testing** verifies the fix works in the UI before the MR is submitted
 
 ## After Completion - What To Tell The User
 
