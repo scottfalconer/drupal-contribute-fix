@@ -77,9 +77,12 @@ ddev start
 
 # 3. Install development tools
 "$DCF_ROOT/scripts/setup-ddev-contrib.sh"
-"$DCF_ROOT/scripts/setup-cspell.sh"
+"$DCF_ROOT/scripts/setup-ddev-cspell.sh"
 
-# 4. Run local CI checks
+# 4. (Optional) Install drupalorg-cli for issue/MR management
+"$DCF_ROOT/scripts/setup-drupalorg-cli.sh"
+
+# 5. Run local CI checks
 "$DCF_ROOT/scripts/run-local-ci.sh"
 ```
 
@@ -87,7 +90,8 @@ ddev start
 
 - **`setup-mr-workspace.sh`**: Clone module repo, add issue fork remote, checkout MR branch
 - **`setup-ddev-contrib.sh`**: Install ddev-drupal-contrib addon (phpstan, phpcs, phpcbf commands)
-- **`setup-cspell.sh`**: Install cspell command with Yarn 4+ PnP support
+- **`setup-ddev-cspell.sh`**: Install cspell command with Yarn 4+ PnP support
+- **`setup-drupalorg-cli.sh`**: Install drupalorg-cli for issue/MR management (requires PHP 8.1+)
 - **`run-local-ci.sh`**: Run all local CI checks (phpstan, phpcs, cspell)
 
 See [scripts/README.md](scripts/README.md) for detailed documentation.
@@ -623,7 +627,7 @@ Use the provided provisioning scripts to set up local CI tooling that mirrors Gi
 "$DCF_ROOT/scripts/setup-ddev-contrib.sh"
 
 # Install cspell with Yarn 4+ PnP support
-"$DCF_ROOT/scripts/setup-cspell.sh"
+"$DCF_ROOT/scripts/setup-ddev-cspell.sh"
 
 # Run all local CI checks
 "$DCF_ROOT/scripts/run-local-ci.sh"

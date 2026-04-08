@@ -19,14 +19,13 @@ Sets up a workspace for working on an existing Drupal contrib merge request.
 
 **Example:**
 ```bash
-./scripts/setup-mr-workspace.sh recaptcha_v3 3580901 'NNNNNNN-pass-gitlab-ci'
+./scripts/setup-mr-workspace.sh recaptcha_v3 3580901 '3580901-pass-gitlab-ci'
 ```
 
 **What it does:**
 - Clones the module from drupalcode.org
 - Adds the issue fork remote
 - Checks out the MR branch
-- Sets up git excludes for DDEV files
 
 ### 2. `setup-ddev-contrib.sh`
 
@@ -41,19 +40,20 @@ cd <module_directory>
 **What it does:**
 - Installs the ddev-drupal-contrib addon
 - Restarts DDEV to apply changes
+- Sets up git excludes for DDEV and generated files
 - Provides access to commands like `ddev phpstan`, `ddev phpcs`, `ddev phpcbf`
 
 **Requirements:**
 - Must be run from a DDEV project directory
 
-### 3. `setup-cspell.sh`
+### 3. `setup-ddev-cspell.sh`
 
 Installs the `ddev cspell` command for spell checking.
 
 **Usage:**
 ```bash
 cd <module_directory>
-../scripts/setup-cspell.sh
+../scripts/setup-ddev-cspell.sh
 ```
 
 **What it does:**
@@ -67,7 +67,29 @@ cd <module_directory>
 
 **Note:** This uses a custom fork with fixes for Yarn 4+ PnP support: https://github.com/jameswilson/ddev-drupal-contrib/tree/cspell
 
-### 4. `run-local-ci.sh`
+### 4. `setup-drupalorg-cli.sh`
+
+Installs drupalorg-cli for Drupal.org issue and merge request management.
+
+**Usage:**
+```bash
+./scripts/setup-drupalorg-cli.sh
+```
+
+**What it does:**
+- Checks PHP version (requires 8.1+)
+- Checks for Composer
+- Installs drupalorg-cli globally via Composer
+- Verifies PATH configuration
+- Displays common commands
+
+**Requirements:**
+- PHP 8.1 or higher
+- Composer
+
+**Note:** This is a global installation, not project-specific.
+
+### 5. `run-local-ci.sh`
 
 Runs all local CI checks that mirror Drupal GitLab CI.
 
@@ -94,7 +116,7 @@ Here's the complete workflow for working on a Drupal contrib merge request:
 
 ```bash
 # 1. Set up the workspace
-./scripts/setup-mr-workspace.sh recaptcha_v3 3580901 'NNNNNNN-pass-gitlab-ci'
+./scripts/setup-mr-workspace.sh recaptcha_v3 3580901 '3580901-pass-gitlab-ci'
 
 # 2. Initialize DDEV
 cd recaptcha_v3
@@ -103,7 +125,7 @@ ddev start
 
 # 3. Set up development tools
 ../scripts/setup-ddev-contrib.sh
-../scripts/setup-cspell.sh
+../scripts/setup-ddev-cspell.sh
 
 # 4. Make your changes
 # Edit files...

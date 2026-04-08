@@ -38,6 +38,31 @@ ddev get ddev/ddev-drupal-contrib
 info "Restarting DDEV..."
 ddev restart
 
+# Set up git excludes for DDEV and generated files
+info "Setting up git excludes for DDEV files..."
+
+# Check if we're in a git repository
+if [ ! -d .git ]; then
+    warn "Not in a git repository. Skipping git excludes setup."
+else
+    # Create or append to .git/info/exclude
+    cat >> .git/info/exclude <<EOF
+
+# DDEV and contrib development files (added by setup-ddev-contrib.sh)
+/.ddev/
+/recipes/
+/vendor/
+/web/
+/.gitignore
+/composer.lock
+/phpcs.xml.dist
+/phpstan.neon
+/phpstan-baseline.neon
+EOF
+
+    info "Git excludes configured. Run 'git status' after running CI commands to see if additional files need excluding."
+fi
+
 info "ddev-drupal-contrib setup complete!"
 info "Available commands:"
 echo "  - ddev poser (Composer)"
@@ -46,4 +71,7 @@ echo "  - ddev phpcs"
 echo "  - ddev phpcbf"
 echo "  - ddev phpunit"
 echo ""
-warn "Note: cspell is not included by default. Run setup-cspell.sh to add it."
+warn "Note: cspell is not included by default. Run setup-ddev-cspell.sh to add it."
+echo ""
+info "After running CI commands (ddev phpcs, ddev phpstan), check 'git status' for any new untracked files."
+info "Add them to .git/info/exclude as needed to keep your commits clean."

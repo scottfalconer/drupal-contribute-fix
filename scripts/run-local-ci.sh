@@ -67,7 +67,7 @@ run_check "PHPCS" "ddev phpcs" "ddev phpcbf"
 if [ -f .ddev/commands/web/cspell ]; then
     run_check "CSpell" "ddev cspell" ""
 else
-    warn "CSpell command not found. Run setup-cspell.sh to install it."
+    warn "CSpell command not found. Run setup-ddev-cspell.sh to install it."
 fi
 
 # Summary

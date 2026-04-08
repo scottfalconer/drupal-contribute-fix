@@ -27,13 +27,12 @@ usage() {
     echo "Usage: $0 <module_name> <issue_id> <branch_name>"
     echo ""
     echo "Example:"
-    echo "  $0 recaptcha_v3 3580901 'NNNNNNN-pass-gitlab-ci'"
+    echo "  $0 recaptcha_v3 3580901 '3580901-pass-gitlab-ci'"
     echo ""
     echo "This will:"
     echo "  1. Clone the module from drupalcode.org"
     echo "  2. Add the issue fork remote"
     echo "  3. Checkout the MR branch"
-    echo "  4. Set up git excludes for DDEV files"
     exit 1
 }
 
@@ -70,25 +69,39 @@ git remote add "$ISSUE_REMOTE" "git@git.drupal.org:issue/${MODULE_NAME}-${ISSUE_
 info "Fetching issue fork..."
 git fetch "$ISSUE_REMOTE"
 
+# List available branches in the issue fork
+info "Available branches in issue fork:"
+AVAILABLE_BRANCHES=$(git branch -r | grep "$ISSUE_REMOTE/" | sed "s|.*$ISSUE_REMOTE/||" | grep -v HEAD || true)
+
+if [ -z "$AVAILABLE_BRANCHES" ]; then
+    warn "No branches found in issue fork. This may be an error."
+else
+    echo "$AVAILABLE_BRANCHES" | while read -r branch; do
+        # Get last commit date for this branch
+        LAST_COMMIT=$(git log -1 --format="%cr" "${ISSUE_REMOTE}/${branch}" 2>/dev/null || echo "unknown")
+        if [ "$branch" = "$BRANCH_NAME" ]; then
+            echo -e "${GREEN}  * $branch${NC} (selected, last commit: $LAST_COMMIT)"
+        else
+            echo "    $branch (last commit: $LAST_COMMIT)"
+        fi
+    done
+fi
+
+# Check if the specified branch exists
+if ! git show-ref --verify --quiet "refs/remotes/${ISSUE_REMOTE}/${BRANCH_NAME}"; then
+    echo ""
+    error "Branch '${BRANCH_NAME}' not found in issue fork!"
+    echo ""
+    echo "Available branches:"
+    echo "$AVAILABLE_BRANCHES"
+    echo ""
+    echo "Tip: Use 'drupalorg mr:list ${ISSUE_ID}' to see all merge requests and their branches."
+    exit 1
+fi
+
 # Checkout branch
 info "Checking out branch: ${BRANCH_NAME}..."
 git checkout -b "$BRANCH_NAME" --track "${ISSUE_REMOTE}/${BRANCH_NAME}"
-
-# Set up git excludes for DDEV files
-info "Setting up git excludes for DDEV files..."
-cat >> .git/info/exclude <<EOF
-
-# DDEV and contrib development files
-/.ddev/
-/recipes/
-/vendor/
-/web/
-/.gitignore
-/composer.lock
-/phpcs.xml.dist
-/phpstan.neon
-/phpstan-baseline.neon
-EOF
 
 info "Workspace setup complete!"
 echo ""
@@ -97,5 +110,5 @@ echo "  1. cd ${WORK_DIR}"
 echo "  2. Run: ddev config --project-type=drupal --docroot=web"
 echo "  3. Run: ddev start"
 echo "  4. Run: ../scripts/setup-ddev-contrib.sh"
-echo "  5. Run: ../scripts/setup-cspell.sh"
+echo "  5. Run: ../scripts/setup-ddev-cspell.sh"
 echo "  6. Run: ../scripts/run-local-ci.sh"
