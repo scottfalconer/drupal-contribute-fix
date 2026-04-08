@@ -25,7 +25,10 @@ Sets up a workspace for working on an existing Drupal contrib merge request.
 **What it does:**
 - Clones the module from drupalcode.org
 - Adds the issue fork remote
+- Lists available branches with last commit times
+- Validates the specified branch exists
 - Checks out the MR branch
+- Provides helpful error messages if branch not found
 
 ### 2. `setup-ddev-contrib.sh`
 
@@ -108,7 +111,7 @@ cd <module_directory>
 **Requirements:**
 - Must be run from a DDEV project directory
 - `setup-ddev-contrib.sh` must have been run first
-- `setup-cspell.sh` must have been run first (for cspell)
+- `setup-ddev-cspell.sh` must have been run first (for cspell)
 
 ## Complete Workflow
 
@@ -127,20 +130,23 @@ ddev start
 ../scripts/setup-ddev-contrib.sh
 ../scripts/setup-ddev-cspell.sh
 
-# 4. Make your changes
+# 4. (Optional) Install drupalorg-cli for issue/MR management
+../scripts/setup-drupalorg-cli.sh
+
+# 5. Make your changes
 # Edit files...
 
-# 5. Run local CI checks
+# 6. Run local CI checks
 ../scripts/run-local-ci.sh
 
-# 6. Fix any issues
+# 7. Fix any issues
 ddev phpcbf  # Auto-fix coding standards
 # Fix other issues manually
 
-# 7. Run CI checks again
+# 8. Run CI checks again
 ../scripts/run-local-ci.sh
 
-# 8. Commit and push
+# 9. Commit and push
 git add .
 git commit -m "Issue #3580901: Fix description"
 git push
@@ -153,6 +159,9 @@ These scripts complement the `drupalorg-cli` tool mentioned in the main skill do
 **Recommended combined workflow:**
 
 ```bash
+# (Optional) Install drupalorg-cli if not already installed
+./scripts/setup-drupalorg-cli.sh
+
 # Use drupalorg-cli to inspect the issue/MR
 drupalorg issue:show 3580901 --format=llm
 drupalorg mr:list 3580901 --format=llm
@@ -162,7 +171,7 @@ drupalorg mr:list 3580901 --format=llm
 cd recaptcha_v3
 ddev config --project-type=drupal --docroot=web && ddev start
 ../scripts/setup-ddev-contrib.sh
-../scripts/setup-cspell.sh
+../scripts/setup-ddev-cspell.sh
 ../scripts/run-local-ci.sh
 
 # Use drupalorg-cli to monitor CI pipeline
@@ -174,14 +183,14 @@ drupalorg mr:logs 3580901 <mr-iid>
 
 ### cspell command not found
 
-Make sure you've run `setup-cspell.sh` first:
+Make sure you've run `setup-ddev-cspell.sh` first:
 ```bash
-../scripts/setup-cspell.sh
+../scripts/setup-ddev-cspell.sh
 ```
 
 ### Drupal core not found
 
-The `setup-cspell.sh` script expects Drupal core at `web/core`. If your project uses a different structure (e.g., `docroot/core`), you'll need to adjust the script or create a symlink.
+The `setup-ddev-cspell.sh` script expects Drupal core at `web/core`. If your project uses a different structure (e.g., `docroot/core`), you'll need to adjust the script or create a symlink.
 
 ### Git push permission denied
 
@@ -202,6 +211,33 @@ And that you've installed ddev-drupal-contrib:
 ddev get ddev/ddev-drupal-contrib
 ddev restart
 ```
+
+### drupalorg-cli not found after installation
+
+If `drupalorg` command is not found after running `setup-drupalorg-cli.sh`:
+
+1. Check that Composer's global bin directory is in your PATH:
+   ```bash
+   composer global config bin-dir --absolute
+   ```
+
+2. Add it to your shell profile (~/.bashrc or ~/.zshrc):
+   ```bash
+   export PATH="$PATH:$HOME/.composer/vendor/bin"
+   ```
+
+3. Reload your shell:
+   ```bash
+   source ~/.bashrc  # or source ~/.zshrc
+   ```
+
+### PHP version too old for drupalorg-cli
+
+drupalorg-cli requires PHP 8.1+. If you have an older version:
+
+1. Install a newer PHP version (via Homebrew, apt, etc.)
+2. Update your PATH to use the newer version
+3. Run `setup-drupalorg-cli.sh` again
 
 ## Credits
 
