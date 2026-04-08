@@ -60,6 +60,40 @@ for d in "$HOME/.agents/skills/drupal-contribute-fix" "$HOME/.codex/skills/drupa
 
 All commands below use `$DCF_ROOT`. You only need to run the line above once per session.
 
+## Development Environment Provisioning (DDEV + Local CI)
+
+When working on existing Drupal contrib merge requests, use the provisioning scripts in `$DCF_ROOT/scripts/` to set up a consistent development environment with local CI parity.
+
+### Quick Start for MR Contributions
+
+```bash
+# 1. Set up MR workspace (clone, add issue fork, checkout branch)
+"$DCF_ROOT/scripts/setup-mr-workspace.sh" <module_name> <issue_id> <branch_name>
+
+# 2. Initialize DDEV
+cd <module_name>
+ddev config --project-type=drupal --docroot=web
+ddev start
+
+# 3. Install development tools
+"$DCF_ROOT/scripts/setup-ddev-contrib.sh"
+"$DCF_ROOT/scripts/setup-cspell.sh"
+
+# 4. Run local CI checks
+"$DCF_ROOT/scripts/run-local-ci.sh"
+```
+
+### Provisioning Scripts
+
+- **`setup-mr-workspace.sh`**: Clone module repo, add issue fork remote, checkout MR branch
+- **`setup-ddev-contrib.sh`**: Install ddev-drupal-contrib addon (phpstan, phpcs, phpcbf commands)
+- **`setup-cspell.sh`**: Install cspell command with Yarn 4+ PnP support
+- **`run-local-ci.sh`**: Run all local CI checks (phpstan, phpcs, cspell)
+
+See [scripts/README.md](scripts/README.md) for detailed documentation.
+
+**Note:** These scripts complement `drupalorg-cli` by handling local environment setup and CI parity, while `drupalorg-cli` handles issue/MR metadata and pipeline monitoring.
+
 ## FIRST STEP - Before Writing Any Code
 
 **If you are debugging an error in `docroot/modules/contrib/*` or `web/modules/contrib/*`,
@@ -579,6 +613,25 @@ If `drupalorg-cli` cannot run in the environment, use the issue page's **Issue f
 controls and standard Git/GitLab UI as a fallback.
 
 ### Local CI Parity (Best Effort)
+
+**Quick Setup with Provisioning Scripts:**
+
+Use the provided provisioning scripts to set up local CI tooling that mirrors GitLab CI:
+
+```bash
+# Install ddev-drupal-contrib (phpstan, phpcs, phpcbf)
+"$DCF_ROOT/scripts/setup-ddev-contrib.sh"
+
+# Install cspell with Yarn 4+ PnP support
+"$DCF_ROOT/scripts/setup-cspell.sh"
+
+# Run all local CI checks
+"$DCF_ROOT/scripts/run-local-ci.sh"
+```
+
+See [Development Environment Provisioning](#development-environment-provisioning-ddev--local-ci) and [scripts/README.md](scripts/README.md) for details.
+
+**Archiving Local CI Evidence:**
 
 If local CI tooling exists in the contributor environment, run parity checks and
 archive evidence under `.drupal-contribute-fix/<issue>/`:
