@@ -6,7 +6,8 @@ Find existing Drupal fixes. Prepare local contribution files when a new fix is n
 It searches Drupal.org issues before it packages a local code change.
 It helps contributors choose an existing merge request (MR), verify a released fix, or prepare new work.
 
-The tool creates local files for review. It does not post comments, create issues, push commits, or change issue status.
+The contribution commands create local files for review. The `context` command only reads local information.
+The tool does not post comments, create issues, push commits, or change issue status.
 
 ## Choose a resolution
 
@@ -24,7 +25,7 @@ The tool does not check development branches or upgrade dependencies automatical
 ## Requirements
 
 - Python 3.8 or later. The Python tool uses only the standard library.
-- Git for `package` and `reroll`.
+- Git for `context`, `package`, and `reroll`.
 - Network access for Drupal.org searches and upstream Git checkouts.
 - PHP for syntax checks.
 - PHP_CodeSniffer with the Drupal standard for coding-standard checks.
@@ -66,12 +67,67 @@ Keep the complete repository together. The entry file uses `scripts/`, `lib/`, a
 
 | Command | Purpose |
 | --- | --- |
+| `context` | Find local repositories and reports for a specified Drupal project and issue. |
 | `preflight` | Search issues. Save candidate metadata. |
 | `package` | Compare local code with an upstream baseline. Create a local diff and report. |
 | `test` | Write a comment draft from test evidence that you supply. It does not execute tests. |
 | `reroll` | Try to apply a historical patch to another Git ref. Save a reroll if possible. |
 
 Use `python3 scripts/contribute_fix.py COMMAND --help` for each command's options.
+
+### Find local work for an issue
+
+Use `context` when you need to locate earlier work for a known issue.
+Specify the directory to inspect, the project machine name, and the issue number:
+
+```bash
+python3 scripts/contribute_fix.py context \
+  --scan-root /path/to/workspaces \
+  --project metatag \
+  --issue 1234567
+```
+
+The command reads local checkouts, linked worktrees, and report metadata within the selected directory.
+Discovery stays within that directory. It does not follow symbolic links.
+For a linked worktree, Git can read shared metadata stored outside the selected directory.
+It skips Git metadata and dependency directories during discovery.
+It does not fetch remote data, write files, or maintain a journal.
+Neither `preflight` nor `package` invokes it.
+
+A repository matches the project through an official Drupal Git remote or its `composer.json` package name.
+The command shows matching repositories with their current branch, commit, and working-tree state.
+It searches local branches, cached remote branches, and commit subjects for exact issue numbers.
+It lists these issue matches separately.
+Uncommitted changes do not prove that a repository contains work for the requested issue.
+The command disables external clean filters and filesystem-monitor hooks.
+Working-tree status can differ from normal Git status when filters are configured.
+Parent repository status excludes submodule working files.
+The scan inspects a submodule checkout only if discovery reaches it within the selected scope.
+Git log does not run signature verification programs.
+
+If Git metadata contains `sharedindex.*` files, the command leaves working-tree status unknown.
+This check also includes stale shared-index files.
+Status also stays unknown if Git redirects the working tree to a different directory.
+The command reports an incomplete scan with a warning and exit code `40`.
+Branch, commit, and report results remain available.
+
+A `REPORT.md` match requires matching `Project` and `Issue` or `Related Issue` metadata.
+These fields must precede the first subsection heading (`##` through `######`).
+The issue field must contain the matching Drupal.org issue URL.
+Candidate tables and other report text do not establish a match.
+Treat all results as locations to inspect. They do not prove a fix, a test result, or an issue status.
+
+The default limits are six directory levels, 50 repositories, and 100 commits per repository.
+Use `--max-depth`, `--max-repos`, and `--max-commits` to adjust these limits.
+The scan visits no more than 2,000 directories.
+Each metadata file has a size limit of 1,048,576 bytes (1 MiB).
+Each Git command has a time limit of five seconds.
+Read the output warnings before you interpret an empty result.
+
+Use `--format json` for JSON output. The default format is `text`.
+Exit code `0` includes a completed scan with no matches.
+Exit code `40` indicates an incomplete scan or an operational error.
+Invalid arguments return exit code `2`.
 
 ### Prepare a local change
 

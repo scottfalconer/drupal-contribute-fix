@@ -51,6 +51,11 @@ Exit code `20` is reserved.
 
 Read [Issue status codes](references/issue-status-codes.md) when issue status affects the next action.
 
+For an optional lookup of earlier local work, use the [context command](README.md#find-local-work-for-an-issue).
+Specify the scan directory, project, and issue explicitly.
+The command only reads local information. It does not run during `preflight` or `package`.
+Use its results to locate work for inspection. Do not treat a match or uncommitted changes as proof of a fix.
+
 ## Prepare a new change
 
 Keep changes limited to the verified cause.
