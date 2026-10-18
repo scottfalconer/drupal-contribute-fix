@@ -478,7 +478,9 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             lines.append("")
             lines.append(f"**Status:** {status}")
             lines.append("")
-            lines.append(f"**Command:** `{result.command}`")
+            lines.append("**Command:**")
+            lines.append("")
+            lines.extend(f"    {line}" for line in result.command.splitlines())
             lines.append("")
             if result.output:
                 lines.append("**Output:**")
@@ -585,7 +587,7 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
             lines.extend([
                 f"1. **Go to the issue:** {report.best_match.url}",
                 f"2. **Review the existing MR:** {mr_url}",
-                "3. **Test the MR locally** and add a Tested-by/RTBC comment",
+                "3. **Test the MR locally** and record exact commands and results",
                 "4. **If changes are needed:** push commits to the issue fork branch used by the MR",
                 "",
                 "Tip: You can download the MR as a `.diff` for local testing:",
@@ -615,15 +617,19 @@ def generate_report_markdown(report: ContributionReport, issue_nid: Optional[int
     lines.extend([
         "---",
         "",
-        "*Generated with [drupal-contribute-fix](https://github.com/drupal-contribute-fix)*",
+        "*Generated with [drupal-contribute-fix](https://github.com/scottfalconer/drupal-contribute-fix)*",
     ])
 
     return "\n".join(lines)
 
 
 def generate_issue_comment(report: ContributionReport, is_new_issue: bool = False) -> str:
-    """Generate paste-ready drupal.org issue comment (Submission Kit)."""
-    lines = []
+    """Generate an issue comment draft for review."""
+    lines = [
+        "> Draft: Check all statements before you post this comment.",
+        "> Proposed test steps do not prove that a test was run.",
+        "",
+    ]
 
     # Generate a description from keywords
     if report.keywords:
@@ -651,7 +657,7 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
 
         if best.workflow_mode == WORKFLOW_MODE_MR and best.mr_urls:
             lines.extend([
-                "This issue is **MR-based**. I focused on reviewing/testing the existing MR rather than uploading a patch.",
+                "This issue has an MR. Review and test it before you propose a new change.",
                 "",
                 "**MR(s):**",
             ])
@@ -659,14 +665,14 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
                 lines.append(f"- {url}")
             lines.extend([
                 "",
-                "**Testing performed:**",
-                "- [EDIT: add exact commands + results]",
+                "**Test evidence:**",
+                "- No test result was recorded by this command. Add exact commands and observed results.",
                 "",
                 "**Notes:**",
                 "- [EDIT: what you observed; any feedback for the MR author/maintainer]",
                 "",
                 "**AI disclosure:**",
-                "- AI assistance used. Output reviewed by me and tests above were run by me.",
+                "- [EDIT: Describe the AI assistance and the checks you performed.]",
                 "",
             ])
             return "\n".join(lines)
@@ -682,11 +688,11 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
                 lines.append(f"- {url}")
             lines.extend([
                 "",
-                "**Testing performed:**",
-                "- [EDIT: add exact commands + results]",
+                "**Test evidence:**",
+                "- No test result was recorded by this command. Add exact commands and observed results.",
                 "",
                 "**AI disclosure:**",
-                "- AI assistance used. Output reviewed by me and tests above were run by me.",
+                "- [EDIT: Describe the AI assistance and the checks you performed.]",
                 "",
             ])
             return "\n".join(lines)
@@ -697,7 +703,7 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "## New Issue Template",
             "",
             "> **No existing issue was found on drupal.org.**",
-            "> Create a new issue and paste this content.",
+            "> Review this draft before you create a new issue.",
             "",
             "---",
             "",
@@ -709,13 +715,13 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "",
             "---",
             "",
-            "### Issue Description (copy/paste below)",
+            "### Issue Description Draft",
             "",
             "---",
             "",
             "## Problem/Motivation",
             "",
-            f"When {keyword_desc}, an error occurs.",
+            f"Reported problem: {keyword_desc}.",
             "",
             "[EDIT: Describe the problem in more detail]",
             "",
@@ -769,6 +775,7 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "",
         ])
 
+        lines.extend(_validation_evidence(report))
         return "\n".join(lines)
 
     # Title suggestion - for existing issues
@@ -779,7 +786,7 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "> **REMINDER:** You must manually post this to drupal.org.",
             "> This skill does NOT create issues or post comments for you.",
             "",
-            "**Copy/paste the text below into a new comment on the issue:**",
+            "**Review the draft below before you post a comment:**",
             "",
             "---",
             "",
@@ -810,26 +817,25 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
         if has_confident_match and report.best_match.has_mr:
             mr_ref = report.best_match.mr_urls[0].split('/')[-1] if report.best_match.mr_urls else "existing MR"
             lines.extend([
-                f"I encountered this issue locally and reviewed {mr_ref}.",
+                f"Related MR: {mr_ref}. [EDIT: Describe what you reviewed.]",
                 "",
-                "**MR workflow note:** This issue is MR-based, so I focused on reviewing/testing",
-                "the existing MR workflow instead of uploading a patch by default.",
+                "**MR workflow note:** Use the issue fork and MR for this change.",
                 "",
                 "**If additional changes are needed:** [EDIT THIS - describe commits pushed to the MR branch]",
                 "",
             ])
         elif has_confident_match and report.best_match.has_patch:
             lines.extend([
-                "I encountered this issue locally and reviewed the existing diff/patch attachments.",
+                "The issue has diff or patch attachments. [EDIT: Describe what you reviewed.]",
                 "",
-                "**MR workflow note:** I prepared this as MR-first work and kept attachments as context only.",
+                "**MR workflow note:** Use an MR for new changes. Review the old attachments for context.",
                 "",
                 "**If additional changes are needed:** [EDIT THIS - describe commits pushed to the MR branch]",
                 "",
             ])
         else:
             lines.extend([
-                f"I encountered `{keyword_desc}` and prepared an MR-first fix for review.",
+                f"Proposed change for `{keyword_desc}`. [EDIT: Describe the cause and the change.]",
                 "",
             ])
 
@@ -852,7 +858,7 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
         # Try to infer what the change does from file paths and keywords
         if report.file_paths:
             main_file = report.file_paths[0] if report.file_paths else "the affected file"
-            lines.append(f"- Fixes {keyword_desc} in `{main_file}`")
+            lines.append(f"- Changes `{main_file}`. [EDIT: Explain how this addresses {keyword_desc}.]")
         else:
             lines.append(f"- Addresses: {keyword_desc}")
 
@@ -926,6 +932,8 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
             "",
         ])
 
+    lines.extend(_validation_evidence(report))
+
     # Footer
     lines.extend([
         "---",
@@ -933,6 +941,29 @@ def generate_issue_comment(report: ContributionReport, is_new_issue: bool = Fals
     ])
 
     return "\n".join(lines)
+
+
+def _validation_evidence(report: ContributionReport) -> List[str]:
+    """Keep executed checks separate from proposed test steps."""
+    lines = ["", "**Recorded validation:**", ""]
+    if not report.validation_results:
+        return lines + ["No validation checks were run.", ""]
+    for result in report.validation_results:
+        if result.not_run_reason:
+            lines.append(f"- {result.tool}: NOT RUN ({result.not_run_reason})")
+        else:
+            status = "PASSED" if result.passed else "FAILED"
+            lines.extend([
+                f"- {result.tool}: {status}",
+                "",
+                "  Command:",
+                *[f"      {line}" for line in result.command.splitlines()],
+                "",
+                "  Output:",
+                *[f"      {line}" for line in result.output.splitlines()],
+                "",
+            ])
+    return lines
 
 
 def generate_candidates_json(candidates: List[IssueCandidate]) -> str:

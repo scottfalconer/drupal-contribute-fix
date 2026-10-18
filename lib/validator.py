@@ -7,9 +7,12 @@ Runs PHP lint, PHPCS, and other checks on changed files.
 import os
 import subprocess
 import shutil
+import shlex
 from pathlib import Path
 from typing import List, Optional, Tuple
 from dataclasses import dataclass
+
+PHP_EXTENSIONS = {".php", ".module", ".inc", ".install", ".test", ".profile", ".theme"}
 
 
 @dataclass
@@ -47,26 +50,26 @@ def run_php_lint(file_paths: List[Path]) -> ValidationResult:
             not_run_reason="PHP not found in PATH",
         )
 
-    php_files = [p for p in file_paths if str(p).endswith(".php")]
+    php_files = [p for p in file_paths if p.suffix in PHP_EXTENSIONS and p.is_file()]
     if not php_files:
         return ValidationResult(
             tool="PHP Lint",
             command="php -l",
-            passed=True,
-            output="No PHP files to check",
-            not_run_reason=None,
+            passed=False,
+            output="",
+            not_run_reason="No PHP files to check",
         )
 
     errors = []
     checked = 0
+    commands = []
 
     for php_file in php_files:
-        if not php_file.exists():
-            continue
-
+        cmd = [php_path, "-l", str(php_file)]
+        commands.append(shlex.join(cmd))
         try:
             result = subprocess.run(
-                [php_path, "-l", str(php_file)],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=30,
@@ -74,7 +77,8 @@ def run_php_lint(file_paths: List[Path]) -> ValidationResult:
             checked += 1
 
             if result.returncode != 0:
-                errors.append(f"{php_file}: {result.stdout.strip()}")
+                output = "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
+                errors.append(f"{php_file}: exit {result.returncode}\n{output}")
         except subprocess.TimeoutExpired:
             errors.append(f"{php_file}: Timeout during syntax check")
         except Exception as e:
@@ -83,14 +87,14 @@ def run_php_lint(file_paths: List[Path]) -> ValidationResult:
     if errors:
         return ValidationResult(
             tool="PHP Lint",
-            command="php -l <files>",
+            command="\n".join(commands),
             passed=False,
             output="\n".join(errors),
         )
 
     return ValidationResult(
         tool="PHP Lint",
-        command="php -l <files>",
+        command="\n".join(commands),
         passed=True,
         output=f"Checked {checked} file(s) - no syntax errors",
     )
@@ -147,8 +151,9 @@ def run_phpcs(
         return ValidationResult(
             tool="PHP CodeSniffer",
             command="phpcs",
-            passed=True,
-            output="No files to check",
+            passed=False,
+            output="",
+            not_run_reason="No files to check",
         )
 
     try:
@@ -175,7 +180,7 @@ def run_phpcs(
 
         return ValidationResult(
             tool="PHP CodeSniffer",
-            command=f"phpcs --standard={standard}",
+            command=shlex.join(cmd),
             passed=passed,
             output=output,
         )
@@ -183,14 +188,14 @@ def run_phpcs(
     except subprocess.TimeoutExpired:
         return ValidationResult(
             tool="PHP CodeSniffer",
-            command="phpcs",
+            command=shlex.join(cmd),
             passed=False,
             output="Timeout during check",
         )
     except Exception as e:
         return ValidationResult(
             tool="PHP CodeSniffer",
-            command="phpcs",
+            command=shlex.join(cmd),
             passed=False,
             output=str(e),
         )
@@ -230,13 +235,14 @@ def run_phpstan(
             not_run_reason="phpstan not found",
         )
 
-    php_files = [str(p) for p in file_paths if str(p).endswith(".php") and p.exists()]
+    php_files = [str(p) for p in file_paths if p.suffix in PHP_EXTENSIONS and p.is_file()]
     if not php_files:
         return ValidationResult(
             tool="PHPStan",
             command="phpstan",
-            passed=True,
-            output="No PHP files to analyze",
+            passed=False,
+            output="",
+            not_run_reason="No PHP files to analyze",
         )
 
     try:
@@ -257,10 +263,12 @@ def run_phpstan(
 
         passed = result.returncode == 0
         output = result.stdout.strip()
+        if result.stderr:
+            output += "\n" + result.stderr.strip()
 
         return ValidationResult(
             tool="PHPStan",
-            command=f"phpstan analyse --level={level}",
+            command=shlex.join(cmd),
             passed=passed,
             output=output,
         )
@@ -268,14 +276,14 @@ def run_phpstan(
     except subprocess.TimeoutExpired:
         return ValidationResult(
             tool="PHPStan",
-            command="phpstan",
+            command=shlex.join(cmd),
             passed=False,
             output="Timeout during analysis",
         )
     except Exception as e:
         return ValidationResult(
             tool="PHPStan",
-            command="phpstan",
+            command=shlex.join(cmd),
             passed=False,
             output=str(e),
         )

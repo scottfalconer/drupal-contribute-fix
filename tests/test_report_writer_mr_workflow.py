@@ -85,6 +85,28 @@ def _build_patch_only_stop_report():
 
 
 class TestReportWriterMRWorkflow(unittest.TestCase):
+    def test_mr_stop_draft_does_not_claim_review_or_tests_were_run(self):
+        report = _build_mr_report()
+        report.outcome_code = 10
+        report.patch_info = None
+        comment = generate_issue_comment(report)
+        self.assertNotIn("tests above were run by me", comment)
+        self.assertNotIn("I focused on reviewing/testing", comment)
+        self.assertIn("No test result was recorded", comment)
+
+    def test_patch_stop_draft_does_not_claim_tests_were_run(self):
+        comment = generate_issue_comment(_build_patch_only_stop_report())
+        self.assertNotIn("tests above were run by me", comment)
+        self.assertIn("No test result was recorded", comment)
+
+    def test_package_draft_distinguishes_proposed_steps_from_test_evidence(self):
+        for is_new_issue in (True, False):
+            with self.subTest(is_new_issue=is_new_issue):
+                comment = generate_issue_comment(_build_mr_report(), is_new_issue=is_new_issue)
+                self.assertIn("Proposed test steps do not prove that a test was run", comment)
+                self.assertIn("No validation checks were run", comment)
+                self.assertNotIn("I encountered this issue locally and reviewed", comment)
+
     def test_report_markdown_uses_mr_instructions_without_patch_upload_step(self):
         report = _build_mr_report()
         markdown = generate_report_markdown(report, issue_nid=123)

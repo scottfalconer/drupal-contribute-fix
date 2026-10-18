@@ -345,7 +345,16 @@ class IssueMatcher:
             # Get MR URLs from enriched response
             related_mrs = issue_detail.get("related_mrs", [])
             if related_mrs:
-                candidate.mr_urls = [mr.get("url") for mr in related_mrs if mr.get("url")]
+                candidate.mr_urls = []
+                for mr in related_mrs:
+                    if isinstance(mr, str):
+                        url = mr
+                    elif isinstance(mr, dict):
+                        url = mr.get("url")
+                    else:
+                        continue
+                    if url and url not in candidate.mr_urls:
+                        candidate.mr_urls.append(url)
                 candidate.has_mr = bool(candidate.mr_urls)
 
             # Get patch URLs from node AND comment attachments
