@@ -1,155 +1,91 @@
-# Drupal Patch Conventions
+# Local diffs and historical patches
 
-Reference for creating patches that follow Drupal community standards.
+Use a merge request (MR) for new contribution work unless the maintainer requests another process.
+See the [Drupal MR workflow](https://www.drupal.org/docs/develop/git/using-gitlab-to-contribute-to-drupal/introduction).
 
-## Filename Format
+The `package` command creates a `.diff` file for local review.
+It does not submit that file to Drupal.org.
 
-Since we cannot predict the exact comment number at the time of generation, use `comment-next` or `do-not-test` as the placeholder.
+## Check the generated diff
 
-**Standard Format:**
-```
-[project_machine_name]-[short_description]-[issue_id]-[placeholder].patch
-```
+The generated filename has this form:
 
-### Examples
-- `metatag-fix-null-pointer-3345678-comment-next.patch`
-- `drupal-views-cache-bug-3123456-comment-next.patch`
-- `token-entity-type-notice-3789012-do-not-test.patch`
-- `webform-submission-handler-new-0.patch` (for issues not yet created)
-
-### Naming Rules
-- Use **lowercase** only
-- Use **hyphens** to separate words (not underscores)
-- Keep description **short** (2-4 words)
-- Use `new` or `0` if no issue number exists yet
-- Use `comment-next` when issue exists but comment number unknown
-- Use `do-not-test` to skip automated testing on drupal.org
-
-## Content Standards
-
-### Root Relative Paths
-
-Patches must be generated relative to the **project root**, not the site root.
-
-```diff
-# CORRECT: Relative to project root
-diff --git a/src/Entity/Node.php b/src/Entity/Node.php
-
-# INCORRECT: Includes site path
-diff --git a/web/modules/contrib/metatag/src/Entity/Node.php ...
+```text
+project-description-issue.diff
+project-description-new.diff
 ```
 
-### Context Lines
+The CLI uses `new` when no issue number is selected.
+It uses lowercase words and hyphens in the description.
+It does not assign an issue comment number.
 
-Use standard git diff (3 lines of context) unless working with `.info.yml` files.
+Paths must be relative to the upstream repository root.
+For a contributed module, expect paths such as `src/Example.php`.
+For Drupal core, expect paths such as `core/lib/Drupal/Example.php`.
+Do not include the site's `web/` or `docroot/` prefix.
+
+The packager removes known distribution metadata from the diff.
+It reduces diff context when the change includes an `.info.yml` file.
+Inspect the result for missing changes and unrelated files.
+
+Deletion detection is off by default.
+A Composer distribution can omit tests or other upstream files.
+Use `--detect-deletions` only when you can distinguish an intentional deletion from an omitted distribution file.
+
+## Check application
+
+Use a clean checkout of the intended target ref.
+Check the patch before you apply it:
 
 ```bash
-# Standard (3 lines context)
-git diff > patch.patch
-
-# Reduced context for .info.yml files (prevents conflicts)
-git diff -U1 > patch.patch
+git apply --check /absolute/path/to/change.diff
 ```
 
-## Creating Patches
-
-### From Git (Recommended)
+Then apply it:
 
 ```bash
-# Stage your changes
-git add -A
-
-# For new files, use intent-to-add
-git add -N path/to/new/file.php
-
-# Generate patch
-git diff > project-description-ISSUE-comment-next.patch
+git apply /absolute/path/to/change.diff
 ```
 
-### With Binary Files
+Inspect the resulting diff.
+Run the tests that prove the changed behavior.
+A successful `git apply --check` is not a test of Drupal behavior.
 
-If your patch includes binary files (images, fonts, etc.):
-```bash
-git diff --binary > project-description-ISSUE-comment-next.patch
-```
+## Create a diff manually
 
-### For .info.yml Files
-
-Drupal's packaging system can cause context conflicts with `.info.yml` files:
-```bash
-git diff -U1 > project-description-ISSUE-comment-next.patch
-```
-
-## Applying Patches
-
-### Verify Patch Applies
+For changes already staged in Git:
 
 ```bash
-# Dry run - checks without applying
-git apply --check path/to/patch.patch
+git diff --cached --binary > /absolute/path/to/change.diff
 ```
 
-### Apply Patch
+For tracked changes that are not staged:
 
 ```bash
-# Standard apply
-git apply path/to/patch.patch
-
-# With 3-way merge (if conflicts)
-git apply --3way path/to/patch.patch
+git diff --binary > /absolute/path/to/change.diff
 ```
 
-## Interdiffs
+Untracked files are absent from the second command's output.
+Stage the intended new files before you use the first command.
+Review the file list before you create the diff.
 
-When updating an existing patch, provide an interdiff showing what changed:
+## Reroll a historical patch
+
+Use `reroll` when a maintainer requests a patch for another branch.
+The command downloads the original patch and checks it against the selected Git ref.
+It attempts a three-way application when a direct application fails.
+It saves a rerolled patch if that attempt succeeds.
+It reports conflicts when manual work is needed.
+
+Review `REROLL_COMMENT.md` and any generated patch.
+Replace draft placeholders with actual findings.
+Run the required tests before you submit the result.
+
+If reviewers need a comparison between two patches, use `interdiff` when available:
 
 ```bash
-# Generate interdiff between old and new patch
-interdiff old.patch new.patch > interdiff-OLDCOMMENT-NEWCOMMENT.txt
+interdiff old.patch new.patch > interdiff.txt
 ```
 
-The interdiff helps reviewers quickly see what changed between versions.
-
-## Patch Scope Guidelines
-
-| Files Changed | Lines Changed | Recommendation |
-|---------------|---------------|----------------|
-| 1-3 files | < 100 lines | Ideal for contribution |
-| 4-5 files | 100-200 lines | Acceptable, consider splitting |
-| 6+ files | 200+ lines | Should probably be split |
-| Any | 500+ lines | Definitely needs splitting |
-
-## Best Practices
-
-### DO
-- Keep patches focused on **one issue**
-- Include **only necessary changes**
-- Test that patch applies to **clean checkout**
-- Follow **Drupal coding standards**
-- Update any **related tests**
-- Include **test coverage** for bug fixes
-
-### DON'T
-- Include unrelated code style changes
-- Add debugging code (`kint()`, `dd()`, `var_dump()`)
-- Include environment-specific changes
-- Modify `composer.lock`
-- Include merge commits
-- Mix bug fixes with new features
-
-## MR vs Patch Workflow
-
-As of 2024+, Drupal prefers **Merge Requests** over patches for many projects.
-
-| Workflow | When to Use |
-|----------|-------------|
-| **MR** | Issue already has MR, project uses GitLab workflow |
-| **Patch** | Issue is patch-based, quick fix, MR not practical |
-
-If an issue has an existing MR, **review/update that MR** rather than posting a competing patch.
-
-## References
-
-- [Making a Patch](https://www.drupal.org/docs/develop/git/using-git-to-contribute-to-drupal/working-with-patches/making-a-patch)
-- [Applying a Patch](https://www.drupal.org/docs/develop/git/using-git-to-contribute-to-drupal/working-with-patches/applying-a-patch)
-- [GitLab MR Workflow](https://www.drupal.org/docs/develop/git/using-gitlab-to-contribute-to-drupal)
+Inspect this comparison before you share it.
+Keep the original and updated patch names in the review notes.

@@ -1,116 +1,47 @@
-# Hack vs. Fix Patterns
+# Code review patterns
 
-The agent must flag any patch containing these patterns as "Needs Human Review" or "Rejected."
+Use these patterns to guide review. A pattern match does not prove that code is incorrect.
+A missing warning does not prove that code is safe.
 
-## Forbidden Patterns (The "Hack" List)
+The tool uses regular expressions and file names to find possible problems.
+Review the complete change and its context.
 
-These patterns should **block patch generation** or require explicit `--force`:
+## Review the behavior
 
-| Pattern | Example | Why It's Bad |
-|---------|---------|--------------|
-| **Core Hacking** | Modifying `/core/` files for a contrib module | Breaks upgrades, won't be accepted |
-| **Disabling Caches** | `'#cache' => ['max-age' => 0]` | Destroys site performance |
-| **Hardcoded IDs** | `if ($node->id() == 145)` | Won't work on other sites |
-| **Suppressing Errors** | `@$entity->get(...)` | Hides real problems |
-| **Empty Catch Blocks** | `catch (Exception $e) {}` | Swallows errors silently |
-| **Direct SQL** | `\Drupal::database()->query(...)` | Should use EntityQuery |
-| **DI Violations** | `\Drupal::service()` in injected class | Breaks testability |
-| **Bypassing Access** | `->accessCheck(FALSE)` without justification | Security risk |
+| Pattern | Review action |
+| --- | --- |
+| Cache disabled or broadly invalidated | Check cache tags, contexts, and invalidation. Preserve correct cache behavior. |
+| Hardcoded entity IDs, paths, or host names | Check whether the value must vary by site or configuration. |
+| Error suppression or an empty exception handler | Check the failure path. Preserve useful error information. |
+| Direct database queries | Check parameter handling and whether the query needs entity access or lifecycle behavior. |
+| Static service access in a service class | Check the surrounding dependency injection pattern. |
+| An access check removed or bypassed | Verify the authorization requirement and affected roles. |
+| Debug output | Remove temporary output before contribution. |
+| Unrelated formatting or refactoring | Separate changes that are not needed for the fix. |
 
-### Code Examples
+These operations can be valid in some contexts.
+Explain the reason and add a test when the reason is not clear from the code.
+Do not replace review with a universal ban on an API.
 
-```php
-// FORBIDDEN: Disabling cache entirely
-$build['#cache'] = ['max-age' => 0];
+## Keep the fix focused
 
-// FORBIDDEN: Broad cache invalidation
-Cache::invalidateAll();
+1. Identify the condition that causes the failure.
+2. Check the relevant API contract.
+3. Correct that condition with the smallest complete change.
+4. Preserve valid existing behavior.
+5. Add a regression test.
 
-// FORBIDDEN: Swallowing exceptions
-try {
-  $result = $service->process();
-} catch (\Exception $e) {
-  // Ignore
-}
+A null check is useful only when null is a valid input or expected absence.
+A default value can hide missing data.
+An early return can skip required cleanup or authorization.
+Test the intended behavior instead of treating a code pattern as automatically safe.
 
-// FORBIDDEN: Bypassing access
-$nodes = $query->accessCheck(FALSE)->execute();
+## Handle a possible vulnerability
 
-// FORBIDDEN: Hardcoded access
-$build['#access'] = TRUE;
-```
+If the change reveals an access bypass, injection, or other vulnerability, stop public contribution work.
+Keep the reproduction details private while you assess the finding.
+Use the [Drupal security reporting process](https://www.drupal.org/docs/develop/issues/issue-procedures-and-etiquette/reporting-a-security-issue).
 
-## Suspicious Patterns (Warn Only)
-
-These patterns should trigger a **warning** but not block:
-
-| Pattern | Example | Recommendation |
-|---------|---------|----------------|
-| **Commented Out Code** | `// old code` blocks | Remove before submission |
-| **Debug Code** | `kint()`, `dd()`, `var_dump()` | Remove before submission |
-| **Formatting Only** | Whitespace-only changes | Should be separate patch |
-| **Environment Variables** | `getenv()`, `$_ENV` | May be environment-specific |
-| **Hardcoded URLs** | `https://example.com` | Make configurable |
-
-```php
-// SUSPICIOUS: Debug statements (remove before patch)
-var_dump($variable);
-print_r($array);
-dd($data);
-\Drupal::logger('debug')->notice('here');
-```
-
-## Acceptable Patterns (Safe Fixes)
-
-These patterns are generally safe and welcomed:
-
-| Pattern | Example | Why It's Good |
-|---------|---------|---------------|
-| **Null Checks** | `if ($value !== NULL)` | Prevents TypeError |
-| **Type Checks** | `instanceof` or `is_array()` | Guards against wrong types |
-| **Null Coalescing** | `$value ?? $default` | Safe default handling |
-| **Early Returns** | Guard clauses | Prevents nested errors |
-| **Proper Logging** | `$this->logger->error(...)` | Traceable error handling |
-
-```php
-// GOOD: Null check before operation
-if ($entity !== NULL && $entity->hasField('field_example')) {
-  $value = $entity->get('field_example')->value;
-}
-
-// GOOD: Type guard
-if ($items instanceof \Traversable) {
-  foreach ($items as $item) { ... }
-}
-
-// GOOD: Null coalescing
-$name = $entity->label() ?? t('Unknown');
-
-// GOOD: Proper error handling
-try {
-  $result = $service->process();
-} catch (\Exception $e) {
-  $this->logger->error('Processing failed: @message', ['@message' => $e->getMessage()]);
-  throw $e;
-}
-```
-
-## Agent Decision Matrix
-
-| Detection | Agent Action |
-|-----------|--------------|
-| Forbidden pattern in diff | **STOP** - Report as "Rejected: Contains [pattern]" |
-| Suspicious pattern in diff | **WARN** - Include in report, suggest removal |
-| Acceptable pattern only | **PROCEED** - Pattern is safe for contribution |
-
-## Severity Levels
-
-| Pattern | Severity | Action |
-|---------|----------|--------|
-| SQL injection risk | Critical | Do not submit |
-| Access bypass | High | Needs strong justification |
-| Cache disable | High | Usually better alternatives exist |
-| Debug code | High | Must remove before submission |
-| Hardcoded values | Medium | Make configurable |
-| Exception swallow | Medium | Add proper handling |
-| Commented code | Low | Remove for cleaner patch |
+The tool's security result is a heuristic warning. It is not a security audit.
+The `--force` option only overrides the existing-fix stop.
+It does not waive security review or correct an unsafe change.

@@ -1,139 +1,65 @@
-# Drupal Contribution Analysis Report
+# Example contribution report
 
-> **IMPORTANT:** This skill does NOT post to drupal.org on your behalf.
-> You must manually create issues, open/update MRs, and post comments.
+This is an illustrative report template. It is not evidence from a real issue or test run.
+Replace bracketed fields with verified information.
+Keep incomplete fields visible until the missing work is complete.
 
-**Generated:** 2024-01-15T14:32:00+00:00
-**Project:** metatag
-**Related Issue:** https://www.drupal.org/node/3345678
+## Problem
 
----
+**Project:** [Project machine name]
+**Issue:** [Verified issue URL, or no matching issue confirmed]
+**Environment:** [Drupal, project, PHP, and database versions]
+**Affected code:** [File and function]
 
-## Outcome
+[Describe the action that causes the failure.]
+[Describe the expected behavior.]
+[Describe the observed behavior.]
 
-**PROCEED WITH CAUTION - Alternative Fix Proposed**
+## Existing work
 
-Local fix differs from existing MR. Comparison and justification provided below.
+**Search command:** [Exact preflight command]
+**Candidate:** [Issue and MR links]
+**Review result:** [Confirmed match, rejected match, or unresolved]
 
----
+[Explain which failure conditions and code paths match.]
+[Record the inspected branch and commit.]
+[State any limit in the search or verification.]
 
-## 1. Upstream Context
+## Proposed change
 
-### Issue Search
+[Explain the cause and the focused correction.]
+[Explain how the regression test detects the original failure.]
 
-**Top Match:** [TypeError in MetatagManager::build() when entity has no canonical URL](https://www.drupal.org/node/3345678)
+**Local diff:** `.drupal-contribute-fix/unfiled-example/diffs/project-example-new.diff`
+**Workflow:** [Existing MR, new MR, or analysis only]
 
-- **Status:** Needs review
-- **Existing Fixes:** MR !42 exists
-- **Score:** 75.0
+## Reproduction procedure
 
-### Dev Branch Verification
+1. [Set up the relevant configuration and content.]
+2. [Perform the action that triggers the bug.]
+3. [Record the original failure.]
+4. [Apply the selected change.]
+5. [Repeat the action.]
+6. [Compare the observed result with the expected behavior.]
 
-- **Checked Branch:** `2.0.x`
-- **Result:** Bug EXISTS in dev (file matches broken local version)
+These steps are a proposed procedure until execution evidence is recorded below.
 
-### Comparison: Local Fix vs. Upstream MR !42
+## Validation evidence
 
-| Aspect | MR !42 Approach | Local Approach |
-|--------|-----------------|----------------|
-| **Method** | Suppresses error with `@` operator | Checks for null before access |
-| **Safety** | Hides potential other errors | Explicit, traceable |
-| **Performance** | Same | Same |
+| Check | Command | Result | Evidence |
+| --- | --- | --- | --- |
+| Regression test before the fix | [Exact command] | Not run | [Blocker or log path] |
+| Regression test after the fix | [Exact command] | Not run | [Blocker or log path] |
+| Related tests | [Exact command] | Not run | [Blocker or log path] |
+| PHP syntax | [Exact command] | Not run | [Blocker or log path] |
+| Coding standards | [Exact command] | Not run | [Blocker or log path] |
+| Browser check, if needed | [Procedure and user role] | Not run | [Blocker or evidence path] |
 
-**MR !42 Code:**
-```php
-@$entity->toUrl('canonical')->toString();
-```
+For each executed command, replace `Not run` with the exit status and observed result.
+Do not infer test success from a generated report or diff.
 
-**Local Fix Code:**
-```php
-if ($entity->hasLinkTemplate('canonical')) {
-  $url = $entity->toUrl('canonical')->toString();
-}
-```
+## Next action
 
-**Conclusion:** Local fix is safer/more robust. The `@` operator in MR !42 would suppress *all* errors, not just the missing canonical URL case.
-
----
-
-## 2. Generated Artifacts
-
-**Local diff artifact:** `issues/3345678/diffs/metatag-fix-null-canonical-3345678.diff`
-
-**Diffstat:**
-- `src/MetatagManager.php` (+5, -2)
-
-### Hack Detection
-
-- [x] No hardcoded IDs
-- [x] No raw SQL
-- [x] No direct `$_GET/$_POST` access
-- [x] No dependency injection violations
-- [x] No cache bypasses
-- [x] No error suppression (`@`)
-
----
-
-## 3. Validation Results
-
-| Tool | Status | Notes |
-|------|--------|-------|
-| PHP Lint | PASSED | No syntax errors |
-| PHPCS (Drupal) | PASSED | Coding standards compliant |
-| PHPStan | SKIPPED | Not installed locally |
-| Tests | SKIPPED | No local test environment |
-
----
-
-## What To Do Next (Manual Steps Required)
-
-> **This skill does NOT file issues or post comments automatically.**
-> You must complete these steps yourself on drupal.org.
-
-1. **Go to the issue:** https://www.drupal.org/node/3345678
-2. **Review MR !42** - Confirm your approach differs/improves on the existing MR
-3. **Copy/paste comment** - Use the text from `ISSUE_COMMENT.md`
-4. **Push commits and open/update MR** from the issue fork branch
-5. **Keep local diff for review** - `diffs/metatag-fix-null-canonical-3345678.diff`
-
----
-
-## ISSUE_COMMENT.md Preview
-
-**Copy/paste this into a new comment on Issue #3345678:**
-
----
-
-### MR Update: TypeError in MetatagManager::build()
-
-I encountered this issue locally and reviewed MR !42.
-
-**How my change differs:** MR !42 uses the `@` error suppression operator, which would hide other potential errors. My change uses an explicit `hasLinkTemplate()` check instead.
-
-**Local diff artifact:** `metatag-fix-null-canonical-3345678.diff`
-
-**What this change does:**
-- Fixes TypeError in `src/MetatagManager.php`
-- Adds explicit null handling instead of error suppression
-
-**Steps to test:**
-1. Reproduce the issue: trigger `TypeError in MetatagManager::build()`
-2. Apply the diff: `git apply <diff-file>`
-3. Verify: confirm `src/MetatagManager.php` no longer triggers the error
-4. Run existing tests: `phpunit` (if available)
-
----
-
-## Nice-to-haves (Excluded from Patch)
-
-To keep this change minimal and focused, the following improvements were identified but **not included**:
-
-- Refactoring the entire `build()` method for better testability
-- Adding unit test coverage (would require test infrastructure changes)
-- Updating related documentation
-
-These could be addressed in follow-up issues.
-
----
-
-*Generated with [drupal-contribute-fix](https://github.com/drupal-contribute-fix)*
+[State the next action, responsible person, and unresolved blocker.]
+Review the complete diff and draft text before submission.
+Keep local evidence outside the upstream contribution.

@@ -1,77 +1,45 @@
-# Drupal.org Issue Status Codes
+# Drupal.org issue status codes
 
-When analyzing API responses (`field_issue_status`), use this logic map.
+The API uses `field_issue_status` for issue status.
+The table matches the labels in `lib/drupalorg_api.py`.
+Read the issue and its recent comments before you choose an action.
 
-## Status Codes with Agent Logic
+| Code | Label | Review action |
+| --- | --- | --- |
+| `1` | Active | Check for related work. |
+| `2` | Fixed | Verify the commit and release. |
+| `3` | Closed (duplicate) | Follow the canonical issue. |
+| `4` | Postponed | Identify the blocker. |
+| `5` | Closed (won't fix) | Read the decision. |
+| `6` | Closed (works as designed) | Check the intended behavior. |
+| `7` | Closed (fixed) | Verify the applicable release. |
+| `8` | Needs review | Review the proposed change. |
+| `13` | Needs work | Address the review findings. |
+| `14` | Reviewed & tested by the community | Inspect the review evidence. |
+| `15` | Patch (to be ported) | Check the required target branch. |
+| `16` | Postponed (maintainer needs more info) | Supply the missing evidence. |
+| `17` | Closed (outdated) | Check a supported version. |
+| `18` | Closed (cannot reproduce) | Verify the reproduction steps. |
 
-| Code | Label | Agent Logic |
-|:-----|:------|:------------|
-| **1** | Active | **Proceed.** Open bug. Check for existing patches in comments. |
-| **2** | Fixed | **Stop.** Issue is resolved. Advise user to upgrade module version. |
-| **3** | Closed (duplicate) | **Stop.** Find the canonical issue and check its status. |
-| **4** | Postponed | **Check.** Read last comment to see why (may be waiting on Core fix). |
-| **5** | Closed (won't fix) | **Stop.** Issue intentionally not addressed. Don't submit patches. |
-| **6** | Closed (works as designed) | **Stop.** Reported behavior is intentional. |
-| **7** | Closed (fixed) | **Stop.** Already fixed. Advise user to upgrade. |
-| **8** | Needs review | **Caution.** Fix exists. You MUST compare local fix to existing MR/Patch. |
-| **13** | Needs work | **Proceed.** Existing fixes failed review. Your patch might address feedback. |
-| **14** | RTBC | **Stop.** Ready to be committed. Do not add noise unless RTBC patch is broken. |
-| **15** | Patch (to be ported) | **Check.** Patch exists but needs porting. May need version-specific patch. |
-| **16** | Postponed (needs info) | **Check.** Waiting for clarification. May need more details, not code. |
-| **17** | Closed (outdated) | **Stop.** Issue no longer relevant. |
-| **18** | Closed (cannot reproduce) | **Check.** Provide reproduction steps if you can reproduce. |
+See the official [issue status definitions](https://www.drupal.org/docs/develop/issues/fields-and-other-parts-of-an-issue/issue-status-field).
 
-## Agent Decision Matrix by Status
+## Interpret tool output
 
-### Generate Patch (Proceed)
-- **1 (Active)**: Open issue, patches welcome
-- **13 (Needs work)**: Previous attempts failed review, try again
+A candidate with fixed status, an MR, or a patch can cause exit code `10`.
+This is a request to review existing work. It is not proof that the local bug is resolved.
 
-### Compare First (Caution)
-- **8 (Needs review)**: **MUST compare** local fix to existing MR/patch before proceeding
-- **15 (Patch to be ported)**: Check if your version needs the port
+Issue status does not prove release availability or test coverage.
+Verify the relevant code and behavior before you recommend an upgrade or stop local work.
+Do not set RTBC solely because a test passes.
 
-### Do Not Generate Patch (Stop)
-- **2 (Fixed)**: Already fixed
-- **7 (Closed - fixed)**: Already fixed and closed
-- **14 (RTBC)**: About to be committed, don't add noise
-- **3 (Duplicate)**: Wrong issue
-- **5 (Won't fix)**: Intentionally rejected
-- **6 (Works as designed)**: Not a bug
-- **17 (Outdated)**: No longer relevant
+## Priority codes
 
-### Human Decision Needed (Check)
-- **4 (Postponed)**: May be blocked by something else
-- **16 (Needs info)**: May need analysis, not code
-- **18 (Cannot reproduce)**: Provide steps if reproducible
+| Code | Label |
+| --- | --- |
+| `400` | Critical |
+| `300` | Major |
+| `200` | Normal |
+| `100` | Minor |
 
-## Priority Codes
-
-| Code | Label | Urgency |
-|------|-------|---------|
-| 400 | Critical | Blocks site operation, security issue |
-| 300 | Major | Significant functionality broken |
-| 200 | Normal | Standard bug or feature |
-| 100 | Minor | Small improvement, edge case |
-
-## API Usage
-
-Query issues by status:
-```
-https://www.drupal.org/api-d7/node.json?type=project_issue&field_issue_status=8
-```
-
-Multiple statuses (comma-separated):
-```
-https://www.drupal.org/api-d7/node.json?type=project_issue&field_issue_status=1,8,13
-```
-
-Get issue with MR details:
-```
-https://www.drupal.org/api-d7/node/[nid].json?related_mrs=1
-```
-
-## References
-
-- [Drupal.org API Documentation](https://www.drupal.org/drupalorg/docs/apis/rest-and-other-apis)
-- [Issue Workflow](https://www.drupal.org/docs/develop/issues/issue-procedures-and-etiquette/issue-status-meanings)
+Priority is separate from status.
+Use the project's [priority guidance](https://www.drupal.org/docs/develop/issues/fields-and-other-parts-of-an-issue/issue-priority-field).
