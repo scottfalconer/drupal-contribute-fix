@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-drupal-contribute-fix: Upstream contribution helper for Drupal.
+drupal-contribute-fix: Prepare Drupal contribution files for review.
 
-Searches drupal.org issue queue before generating local diffs, detects existing
-fixes, and packages minimal upstream-acceptable contributions.
+Search Drupal.org for existing work. Review candidate matches before you use them.
+Create a local diff and report when a new change is needed.
 
 Exit codes:
-    0  - PROCEED: MR artifacts + local diff generated
-    10 - STOP: Existing upstream fix found
-    20 - STOP: Fixed in newer upstream version
-    30 - STOP: Analysis-only recommended
-    40 - ERROR: Could not complete
-    50 - STOP: Security-related issue detected
+    0  - Operation completed. Inspect the report for skipped checks.
+    10 - Candidate has existing work or fixed status. Verify the match.
+    20 - Reserved for a future upstream-version check.
+    30 - Further review or manual conflict resolution is needed.
+    40 - Operation or executed validation check failed.
+    50 - Security heuristic stopped packaging. Review the finding privately.
 """
 
 import argparse
@@ -198,10 +198,10 @@ def parse_args() -> argparse.Namespace:
         help="Required. Specific test steps for the issue comment",
     )
 
-    # Test command - generate RTBC-style comment for existing MR/diff
+    # Test command - record evidence supplied by the user
     test_cmd = subparsers.add_parser(
         "test",
-        help="Generate a Tested-by/RTBC comment for an existing MR or diff artifact",
+        help="Draft a test comment from results you supply; does not run tests",
     )
     test_cmd.add_argument(
         "--issue", "-i",
@@ -224,13 +224,24 @@ def parse_args() -> argparse.Namespace:
         "--notes",
         help="Additional notes about the test",
     )
-    test_cmd.add_argument(
+    tested_artifact = test_cmd.add_mutually_exclusive_group(required=True)
+    tested_artifact.add_argument(
         "--mr",
         help="Specific MR number tested (e.g., '42')",
     )
-    test_cmd.add_argument(
+    tested_artifact.add_argument(
         "--patch",
         help="Specific diff/patch filename tested",
+    )
+    test_cmd.add_argument(
+        "--test-command",
+        required=True,
+        help="Exact test command or manual procedure you ran",
+    )
+    test_cmd.add_argument(
+        "--test-output",
+        required=True,
+        help="Observed result, including the exit code for a command",
     )
     test_cmd.add_argument(
         "--out", "-o",
@@ -306,12 +317,16 @@ def run_preflight(
 
     # Search for matching issues
     matcher = IssueMatcher(api)
-    candidates = matcher.find_candidates(
-        project_nid=project_nid,
-        keywords=keywords,
-        file_paths=paths,
-        max_issues=max_issues,
-    )
+    try:
+        candidates = matcher.find_candidates(
+            project_nid=project_nid,
+            keywords=keywords,
+            file_paths=paths,
+            max_issues=max_issues,
+        )
+    except DrupalOrgAPIError as e:
+        print(f"API Error: {e}")
+        return EXIT_ERROR, [], None, "none"
 
     best_match, confidence = matcher.get_best_match_confidence(candidates)
 
@@ -592,7 +607,8 @@ def run_package(
         try:
             issue_data = api.get_issue(issue_number, include_mrs=True)
             if not issue_data:
-                print(f"Warning: Could not fetch issue #{issue_number}")
+                print(f"Error: Could not fetch issue #{issue_number}")
+                return EXIT_ERROR
             else:
                 # Build an IssueCandidate from the issue data
                 # Find MRs from issue detail
@@ -633,7 +649,8 @@ def run_package(
                     print(f"  Has patches: {len(patch_urls)} attached")
 
         except DrupalOrgAPIError as e:
-            print(f"Warning: Could not fetch issue: {e}")
+            print(f"Error: Could not fetch issue: {e}")
+            return EXIT_ERROR
     else:
         # No issue specified - run full preflight search
         exit_code, candidates, best_match, confidence = run_preflight(
@@ -699,6 +716,11 @@ def run_package(
 
         return EXIT_EXISTING_FIX
 
+    # There is no local baseline cache. Do not clone or fetch in offline mode.
+    if offline:
+        print("Error: Offline mode supports cached issue review only. Packaging needs a baseline clone.")
+        return EXIT_ERROR
+
     # Step 3: Resolve baseline
     print(f"\nResolving baseline for {project}...")
     try:
@@ -760,11 +782,20 @@ def run_package(
     try:
         # Generate diff for security check
         import subprocess
+        if new:
+            subprocess.run(
+                ["git", "add", "-N", "--"] + new,
+                cwd=baseline_path,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
         diff_result = subprocess.run(
-            ["git", "diff"],
+            ["git", "diff", "HEAD"],
             cwd=baseline_path,
             capture_output=True,
             text=True,
+            check=True,
         )
         diff_content = diff_result.stdout
 
@@ -791,7 +822,9 @@ def run_package(
             return EXIT_SECURITY
 
     except Exception as e:
-        print(f"Warning: Security check failed: {e}")
+        print(f"Error: Security check failed: {e}")
+        shutil.rmtree(work_dir, ignore_errors=True)
+        return EXIT_ERROR
 
     # Step 7: Determine issue number for directory structure
     # Use explicit issue_number, or best_match if high confidence, or "unfiled"
@@ -862,7 +895,11 @@ def run_package(
     print("\nWriting report...")
 
     # Determine outcome
-    if patch_info.warnings and any("hack" in w.lower() for w in patch_info.warnings):
+    if any(not result.passed and not result.not_run_reason for result in validation_results):
+        outcome = "validation_failed"
+        outcome_code = EXIT_ERROR
+        outcome_reason = "A validation check failed. Review the results before you submit the change."
+    elif patch_info.warnings and any("hack" in w.lower() for w in patch_info.warnings):
         outcome = "analysis_only"
         outcome_code = EXIT_ANALYSIS_ONLY
         outcome_reason = "Diff contains patterns that may need review. Consider posting analysis first."
@@ -907,20 +944,22 @@ def run_test(
     notes: Optional[str] = None,
     mr_number: Optional[str] = None,
     patch_name: Optional[str] = None,
+    test_command: Optional[str] = None,
+    test_output: Optional[str] = None,
 ) -> int:
-    """
-    Generate a Tested-by/RTBC comment for an existing MR or diff artifact.
+    """Draft a comment from supplied test evidence. This command does not run tests."""
+    if bool(mr_number) == bool(patch_name):
+        print("Error: Specify exactly one tested artifact with --mr or --patch.")
+        return EXIT_ERROR
+    if not test_command or not test_command.strip() or not test_output or not test_output.strip():
+        print("Error: --test-command and --test-output must describe the test you ran.")
+        return EXIT_ERROR
+    if result not in ("pass", "fail", "partial"):
+        print("Error: --result must be pass, fail, or partial.")
+        return EXIT_ERROR
 
-    Returns:
-        Exit code (0 for success)
-    """
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Fetch issue details
     api = DrupalOrgAPI()
     print(f"Fetching issue #{issue_number}...")
-
     try:
         issue_data = api.get_issue(issue_number, include_mrs=True)
         if not issue_data:
@@ -932,115 +971,40 @@ def run_test(
 
     issue_title = issue_data.get("title", f"Issue #{issue_number}")
     issue_url = f"https://www.drupal.org/node/{issue_number}"
-
-    # Determine what was tested
-    if mr_number:
-        tested_artifact = f"MR !{mr_number}"
-    elif patch_name:
-        tested_artifact = f"diff `{patch_name}`"
-    else:
-        # Try to auto-detect from issue
-        related_mrs = issue_data.get("related_mrs", [])
-        mr_urls = extract_mr_urls(related_mrs)
-        if mr_urls:
-            mr_url = mr_urls[0]
-            mr_id = mr_url.split("/")[-1] if mr_url else "latest"
-            tested_artifact = f"MR !{mr_id}"
-        else:
-            tested_artifact = "the latest diff/patch artifact"
-
-    # Generate comment based on result
+    tested_artifact = f"MR !{mr_number}" if mr_number else f"diff `{patch_name}`"
     lines = [
-        "## Test Comment",
+        "## Test Comment Draft",
+        "",
+        "> Review this draft before you post it. This command did not run tests.",
+        "> The result and evidence below were supplied by the user.",
         "",
         f"**Issue:** [{issue_title}]({issue_url})",
-        f"**Tested:** {tested_artifact}",
+        f"**Tested artifact:** {tested_artifact}",
         f"**Environment:** {tested_on}",
+        f"**Reported result:** {result.upper()}",
         "",
-        "---",
+        "**Command or manual procedure:**",
         "",
-        "**Copy/paste this into the issue:**",
+        *[f"    {line}" for line in test_command.splitlines()],
         "",
-        "---",
+        "**Observed output:**",
+        "",
+        *[f"    {line}" for line in test_output.splitlines()],
         "",
     ]
+    if notes:
+        lines.extend([f"**Notes:** {notes}", ""])
+    lines.extend([
+        "Review the full change and the project criteria before you propose an issue status.",
+        "",
+    ])
 
-    if result == "pass":
-        lines.extend([
-            f"### Tested {tested_artifact} - Works as expected",
-            "",
-            f"**Environment:** {tested_on}",
-            "",
-            "**Steps tested:**",
-            "1. Applied the diff/checked out the MR",
-            "2. [Describe what you tested]",
-            "3. [Describe expected vs actual result]",
-            "",
-            "**Result:** The fix works correctly.",
-            "",
-        ])
-        if notes:
-            lines.extend([f"**Notes:** {notes}", ""])
-        lines.extend([
-            "RTBC+1 from my testing.",
-            "",
-        ])
-    elif result == "fail":
-        lines.extend([
-            f"### Tested {tested_artifact} - Does NOT work",
-            "",
-            f"**Environment:** {tested_on}",
-            "",
-            "**Steps tested:**",
-            "1. Applied the diff/checked out the MR",
-            "2. [Describe what you tested]",
-            "",
-            "**Result:** The fix does not resolve the issue.",
-            "",
-            "**Error/behavior observed:**",
-            "[Describe what went wrong]",
-            "",
-        ])
-        if notes:
-            lines.extend([f"**Notes:** {notes}", ""])
-        lines.extend([
-            "Setting back to \"Needs work\".",
-            "",
-        ])
-    else:  # partial
-        lines.extend([
-            f"### Tested {tested_artifact} - Partial success",
-            "",
-            f"**Environment:** {tested_on}",
-            "",
-            "**Steps tested:**",
-            "1. Applied the diff/checked out the MR",
-            "2. [Describe what you tested]",
-            "",
-            "**Result:** The fix works with caveats.",
-            "",
-            "**What works:**",
-            "- [List what works]",
-            "",
-            "**What doesn't work:**",
-            "- [List issues]",
-            "",
-        ])
-        if notes:
-            lines.extend([f"**Notes:** {notes}", ""])
-
-    comment_content = "\n".join(lines)
-
-    # Write to file
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
     comment_path = output_dir / "TEST_COMMENT.md"
-    with open(comment_path, 'w') as f:
-        f.write(comment_content)
-
-    print(f"\nTest comment generated: {comment_path}")
-    print(f"\nResult: {result.upper()}")
-    print(f"Tested: {tested_artifact}")
-    print(f"Environment: {tested_on}")
-
+    comment_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nTest comment draft generated: {comment_path}")
+    print(f"Reported result: {result.upper()} (supplied by the user; tests were not run by this command)")
     return EXIT_PROCEED
 
 
@@ -1060,7 +1024,7 @@ def run_reroll(
     import urllib.request
     import re
 
-    output_dir = Path(output_dir)
+    output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Extract project name from patch URL if not provided
@@ -1111,7 +1075,8 @@ def run_reroll(
             project_type="module",  # Assume module for reroll
             explicit_ref=target_ref,
         )
-        baseline_path = checkout_baseline(baseline, work_dir)
+        # A three-way apply needs the original file blobs from earlier commits.
+        baseline_path = checkout_baseline(baseline, work_dir, shallow=False)
     except BaselineError as e:
         print(f"Error: {e}")
         shutil.rmtree(work_dir, ignore_errors=True)
@@ -1127,6 +1092,7 @@ def run_reroll(
         capture_output=True,
         text=True,
     )
+    exit_code = EXIT_PROCEED
 
     if apply_result.returncode == 0:
         print("Patch applies cleanly! No reroll needed.")
@@ -1146,9 +1112,10 @@ def run_reroll(
             "",
             "---",
             "",
-            f"Tested the patch from #{issue_number} against `{target_ref}`.",
+            f"Ran `git apply --check` for the patch from #{issue_number} against `{target_ref}`.",
             "",
             "**Result:** Patch applies cleanly, no reroll needed.",
+            "This check does not test Drupal behavior.",
             "",
         ]
     else:
@@ -1167,11 +1134,15 @@ def run_reroll(
 
             # Generate the rerolled patch
             diff_result = subprocess.run(
-                ["git", "diff"],
+                ["git", "diff", "--binary", "HEAD"],
                 cwd=baseline_path,
                 capture_output=True,
                 text=True,
             )
+            if diff_result.returncode != 0 or not diff_result.stdout.strip():
+                print(f"Error: No rerolled diff was produced. {diff_result.stderr.strip()}")
+                shutil.rmtree(work_dir, ignore_errors=True)
+                return EXIT_ERROR
 
             # Save rerolled patch
             reroll_filename = f"{project}-reroll-{issue_number}-{target_ref.replace('/', '-')}.patch"
@@ -1202,13 +1173,15 @@ def run_reroll(
                 "",
                 f"The patch from comment #[X] did not apply cleanly to `{target_ref}`.",
                 "",
-                f"Attached is a rerolled version (`{reroll_filename}`).",
+                f"Local patch: `{reroll_filename}`.",
+                "Run the required tests before you submit this patch.",
                 "",
                 "**Changes from original:**",
                 "- [Describe any manual conflict resolution]",
                 "",
             ]
         else:
+            exit_code = EXIT_ANALYSIS_ONLY
             print("\nPatch requires manual conflict resolution.")
             print(f"Conflicts:\n{apply_3way.stderr}")
 
@@ -1239,7 +1212,7 @@ def run_reroll(
     # Cleanup
     shutil.rmtree(work_dir, ignore_errors=True)
 
-    return EXIT_PROCEED
+    return exit_code
 
 
 def main():
@@ -1255,6 +1228,10 @@ def main():
             offline=args.offline,
             max_issues=args.max_issues,
         )
+
+        # Keep prior search evidence when this search fails.
+        if exit_code == EXIT_ERROR:
+            sys.exit(exit_code)
 
         # Write candidates JSON only - no report folder for preflight
         # Preflight is just a search; issue folders are only created by `package`
@@ -1303,6 +1280,8 @@ def main():
             notes=args.notes,
             mr_number=args.mr,
             patch_name=args.patch,
+            test_command=args.test_command,
+            test_output=args.test_output,
         )
         sys.exit(exit_code)
 
