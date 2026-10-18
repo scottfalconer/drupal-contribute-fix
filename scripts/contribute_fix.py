@@ -14,10 +14,15 @@ Exit codes:
     50 - Security heuristic stopped packaging. Review the finding privately.
 """
 
+import sys
+
+# A context lookup must not create bytecode files when it imports local modules.
+if len(sys.argv) > 1 and sys.argv[1] == "context":
+    sys.dont_write_bytecode = True
+
 import argparse
 import os
 import re
-import sys
 import tempfile
 import shutil
 import subprocess
@@ -69,6 +74,35 @@ EXIT_FIXED_UPSTREAM = 20
 EXIT_ANALYSIS_ONLY = 30
 EXIT_ERROR = 40
 EXIT_SECURITY = 50
+
+
+def _positive_int(value: str) -> int:
+    """Accept a positive count or issue number."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Use a positive integer.")
+    if number < 1:
+        raise argparse.ArgumentTypeError("Use a positive integer.")
+    return number
+
+
+def _nonnegative_int(value: str) -> int:
+    """Accept a directory depth, including the search root at depth zero."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("Use zero or a positive integer.")
+    if number < 0:
+        raise argparse.ArgumentTypeError("Use zero or a positive integer.")
+    return number
+
+
+def _project_name(value: str) -> str:
+    """Accept a Drupal project machine name."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", value):
+        raise argparse.ArgumentTypeError("Use a lowercase Drupal project machine name.")
+    return value
 
 
 def parse_args() -> argparse.Namespace:
@@ -280,7 +314,84 @@ def parse_args() -> argparse.Namespace:
         help="Output directory (default: .drupal-contribute-fix)",
     )
 
+    context = subparsers.add_parser(
+        "context",
+        help="Find local Git work and reports without changing files",
+        description="Search a directory for project checkouts and exact issue references. No network access or journal is used.",
+    )
+    context.add_argument("--scan-root", type=Path, required=True,
+                         help="Directory to search. No default directory is selected.")
+    context.add_argument("--project", "-p", type=_project_name, required=True,
+                         help="Drupal project machine name")
+    context.add_argument("--issue", "-i", type=_positive_int, required=True,
+                         help="Exact Drupal.org issue number")
+    context.add_argument("--max-depth", type=_nonnegative_int, default=6,
+                         help="Maximum directory depth from the search root (default: 6)")
+    context.add_argument("--max-repos", type=_positive_int, default=50,
+                         help="Maximum repositories to inspect (default: 50)")
+    context.add_argument("--max-commits", type=_positive_int, default=100,
+                         help="Recent commits to inspect per repository (default: 100)")
+    context.add_argument("--format", choices=["text", "json"], default="text",
+                         help="Output format (default: text)")
+
     return parser.parse_args()
+
+
+def run_context(args: argparse.Namespace) -> int:
+    """Print local search evidence. Do not write files or contact a service."""
+    import json
+    from context_search import search_context
+
+    result = search_context(
+        args.scan_root, args.project, args.issue,
+        max_depth=args.max_depth, max_repos=args.max_repos, max_commits=args.max_commits,
+    )
+    if args.format == "json":
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    else:
+        # Quote values so control characters in paths and Git messages stay visible.
+        def quote(value):
+            return json.dumps(value, ensure_ascii=False)
+
+        limits = result["limits"]
+        print(f"Local context: {args.project}, issue #{args.issue}")
+        print(f"Search root: {quote(result['scan_root'])}")
+        print(f"Scope: depth {args.max_depth}, up to {args.max_repos} repositories, "
+              f"up to {args.max_commits} recent commits per repository.")
+        print(f"Other limits: {limits['max_directories']} directories, "
+              f"{limits['max_file_bytes']} bytes per metadata file, "
+              f"{limits['git_timeout_seconds']} seconds per Git command.")
+        print("Matches are navigation evidence. They do not prove a fix or a test result.")
+        print(f"\nProject checkouts: {len(result['repositories'])}")
+        for repo in result["repositories"]:
+            print(f"\nRepository: {quote(repo['path'])}")
+            print(f"  Project match: {repo['project_match']}")
+            print(f"  Branch: {quote(repo['branch'])}")
+            print(f"  HEAD: {quote(repo['head'])}")
+            state = "unknown" if repo["dirty"] is None else ("changes present" if repo["dirty"] else "clean")
+            print(f"  Working tree: {state}")
+            if repo["status"]:
+                print("  Local changes (issue relevance is not verified):")
+                for change in repo["status"]:
+                    print(f"    {quote(change)}")
+            if not repo["matches"]:
+                print("  No exact issue reference in the inspected branches or commit subjects.")
+            for match in repo["matches"]:
+                print(f"  {match['kind'].capitalize()}: {quote(match['value'])}")
+                print(f"    Reason: {match['reason']}")
+        print(f"\nMatching reports: {len(result['reports'])}")
+        for report in result["reports"]:
+            print(f"\nReport: {quote(report['path'])}")
+            print(f"  Issue field: {report['issue_kind']}")
+            if report.get("generated_at"):
+                print(f"  Recorded date: {quote(report['generated_at'])}")
+        for warning in result["warnings"]:
+            print(f"\nWarning: {quote(warning)}")
+        if result["incomplete"]:
+            print("\nSearch incomplete. Review the warnings.")
+        else:
+            print("\nSearch finished within the stated scope.")
+    return EXIT_ERROR if result["incomplete"] else EXIT_PROCEED
 
 
 def run_preflight(
@@ -1219,7 +1330,10 @@ def main():
     """Main entry point."""
     args = parse_args()
 
-    if args.command == "preflight":
+    if args.command == "context":
+        sys.exit(run_context(args))
+
+    elif args.command == "preflight":
         exit_code, candidates, best_match, confidence = run_preflight(
             project=args.project,
             keywords=args.keywords,
